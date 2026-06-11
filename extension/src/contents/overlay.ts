@@ -1,3 +1,4 @@
+import { CaptureRecorder, type RawCapture } from "@motionlens/analysis";
 import type { PlasmoCSConfig } from "plasmo";
 
 import {
@@ -7,11 +8,13 @@ import {
   type ExtensionResponse,
 } from "~lib/messaging";
 import { ElementPicker } from "~lib/picker/picker";
+import { buildSelector } from "~lib/picker/selector";
 
 /**
- * Content script — element picker overlay and DOM access confirmation.
+ * Content script — element picker overlay and capture recording.
  * MotionLens is strictly read-only: the only DOM addition is the picker's
- * inert overlay host, and page clicks are intercepted only while picking.
+ * inert overlay host, and page clicks are intercepted only while picking
+ * (never while recording).
  */
 
 export const config: PlasmoCSConfig = {
@@ -26,6 +29,42 @@ const picker = new ElementPicker({
     void sendToBackground({ type: MESSAGE_TYPES.DEACTIVATE });
   },
 });
+
+let recorder: CaptureRecorder | null = null;
+
+function startRecording(): ExtensionResponse {
+  const roots = picker.getSelectedElements();
+  if (roots.length === 0) {
+    return { ok: false, error: "Select at least one element before recording." };
+  }
+  if (recorder?.isRecording) {
+    return { ok: false, error: "Already recording." };
+  }
+
+  recorder = new CaptureRecorder({
+    roots,
+    buildSelector,
+    onAutoStop: (capture: RawCapture) => {
+      picker.resume();
+      void sendToBackground({ type: MESSAGE_TYPES.RECORDING_AUTO_STOPPED, capture });
+    },
+  });
+
+  // Let the user interact with the page while recording.
+  picker.pause();
+  recorder.start();
+  return { ok: true };
+}
+
+function stopRecording(): ExtensionResponse {
+  if (!recorder?.isRecording) {
+    return { ok: false, error: "Not recording." };
+  }
+  const capture = recorder.stop();
+  recorder = null;
+  picker.resume();
+  return { ok: true, capture };
+}
 
 chrome.runtime.onMessage.addListener(
   (message: ExtensionMessage, _sender, sendResponse: (response: ExtensionResponse) => void) => {
@@ -44,6 +83,8 @@ chrome.runtime.onMessage.addListener(
         if (message.state.active) {
           picker.enable();
         } else {
+          if (recorder?.isRecording) recorder.stop();
+          recorder = null;
           picker.disable();
         }
         sendResponse({ ok: true });
@@ -52,6 +93,14 @@ chrome.runtime.onMessage.addListener(
       case MESSAGE_TYPES.CLEAR_SELECTION:
         picker.clearSelection();
         sendResponse({ ok: true });
+        break;
+
+      case MESSAGE_TYPES.START_RECORDING:
+        sendResponse(startRecording());
+        break;
+
+      case MESSAGE_TYPES.STOP_RECORDING:
+        sendResponse(stopRecording());
         break;
 
       default:

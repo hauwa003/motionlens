@@ -1,40 +1,32 @@
 /**
- * Analysis engine — transforms raw capture data into a structured MotionGraph.
- *
- * Phase 1 scaffold: defines the raw capture data shapes the capture engine
- * (Phase 4) will produce and the analysis entry point (Phase 6) will consume.
+ * Analysis engine — records interactions on the live page and transforms the
+ * raw capture data into a structured MotionGraph.
  */
 
-import {
-  createEmptyMotionGraph,
-  type MotionGraph,
-  type TriggerType,
-} from "@motionlens/motion-graph";
+import { createEmptyMotionGraph, type MotionGraph } from "@motionlens/motion-graph";
 
-/** A single computed-style snapshot of one element at one point in time. */
-export interface CaptureFrame {
-  /** Milliseconds since recording started. */
-  timestamp: number;
-  /** CSS selector of the observed element. */
-  selector: string;
-  /** Computed style values keyed by property name. */
-  styles: Record<string, string>;
-}
+import type { RawCapture } from "./capture/types";
+import { detectTrigger } from "./summarize";
 
-export interface RawCapture {
-  sourceUrl: string;
-  trigger: TriggerType;
-  startedAt: string;
-  frames: CaptureFrame[];
-}
+export {
+  TRACKED_PROPERTIES,
+  type CaptureEvent,
+  type CaptureFrame,
+  type CaptureMutation,
+  type RawCapture,
+  type TrackedProperty,
+} from "./capture/types";
+export { CaptureRecorder, type RecorderOptions } from "./capture/recorder";
+export { detectTrigger, diffCapture, type PropertyChangeSummary } from "./summarize";
 
 /**
  * Build a MotionGraph from raw capture frames.
  *
- * Phase 6 will implement frame diffing, duration/delay derivation, and
- * element hierarchy construction. For now this returns an empty graph so
- * downstream packages can compile against the real signature.
+ * Phase 6 will implement frame-to-node transformation, duration/delay
+ * derivation, and element hierarchy construction. For now this returns an
+ * empty graph with the detected trigger so downstream packages can compile
+ * against the real signature.
  */
 export function buildMotionGraph(capture: RawCapture): MotionGraph {
-  return createEmptyMotionGraph(capture.sourceUrl, capture.trigger);
+  return createEmptyMotionGraph(capture.sourceUrl, detectTrigger(capture));
 }

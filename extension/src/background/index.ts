@@ -1,3 +1,5 @@
+import type { RawCapture } from "@motionlens/analysis";
+
 import {
   MESSAGE_TYPES,
   type ExtensionMessage,
@@ -7,8 +9,9 @@ import {
 } from "~lib/messaging";
 
 /**
- * Background service worker — owns per-tab activation state and selection,
- * and routes messages between popup, side panel, and content scripts.
+ * Background service worker — owns per-tab activation/recording state,
+ * selection, and the latest capture; routes messages between popup, side
+ * panel, and content scripts.
  *
  * State lives in chrome.storage.session so it survives service worker
  * suspension but resets when the browser closes.
@@ -16,8 +19,9 @@ import {
 
 const stateKey = (tabId: number) => `tab-state:${tabId}`;
 const selectionKey = (tabId: number) => `tab-selection:${tabId}`;
+const captureKey = (tabId: number) => `tab-capture:${tabId}`;
 
-const INACTIVE: TabState = { active: false };
+const INACTIVE: TabState = { active: false, recording: false };
 
 async function getTabState(tabId: number): Promise<TabState> {
   const key = stateKey(tabId);
@@ -29,6 +33,12 @@ async function getTabSelection(tabId: number): Promise<SelectedElementInfo[]> {
   const key = selectionKey(tabId);
   const result = await chrome.storage.session.get(key);
   return (result[key] as SelectedElementInfo[] | undefined) ?? [];
+}
+
+async function getTabCapture(tabId: number): Promise<RawCapture | undefined> {
+  const key = captureKey(tabId);
+  const result = await chrome.storage.session.get(key);
+  return result[key] as RawCapture | undefined;
 }
 
 /** Notify extension surfaces and the affected tab. Either may be closed. */
@@ -50,6 +60,13 @@ async function setTabSelection(tabId: number, selection: SelectedElementInfo[]):
     .catch(() => undefined);
 }
 
+async function setTabCapture(tabId: number, capture: RawCapture): Promise<void> {
+  await chrome.storage.session.set({ [captureKey(tabId)]: capture });
+  chrome.runtime
+    .sendMessage({ type: MESSAGE_TYPES.CAPTURE_CHANGED, tabId, capture })
+    .catch(() => undefined);
+}
+
 async function handleMessage(
   message: ExtensionMessage,
   sender: chrome.runtime.MessageSender,
@@ -67,6 +84,9 @@ async function handleMessage(
     case MESSAGE_TYPES.GET_SELECTION:
       return { ok: true, selection: await getTabSelection(tabId) };
 
+    case MESSAGE_TYPES.GET_CAPTURE:
+      return { ok: true, capture: await getTabCapture(tabId) };
+
     case MESSAGE_TYPES.ACTIVATE: {
       // Confirm the content script has DOM access before reporting active.
       const pong = await chrome.tabs
@@ -80,13 +100,13 @@ async function handleMessage(
         };
       }
 
-      const state: TabState = { active: true };
+      const state: TabState = { active: true, recording: false };
       await setTabState(tabId, state);
       return { ok: true, state, dom: pong.dom };
     }
 
     case MESSAGE_TYPES.DEACTIVATE: {
-      const state: TabState = { active: false };
+      const state: TabState = { active: false, recording: false };
       await setTabSelection(tabId, []);
       await setTabState(tabId, state);
       return { ok: true, state };
@@ -101,6 +121,41 @@ async function handleMessage(
       await chrome.tabs
         .sendMessage(tabId, { type: MESSAGE_TYPES.CLEAR_SELECTION, tabId })
         .catch(() => undefined);
+      return { ok: true };
+    }
+
+    case MESSAGE_TYPES.START_RECORDING: {
+      const response = await chrome.tabs
+        .sendMessage<ExtensionMessage, ExtensionResponse>(tabId, {
+          type: MESSAGE_TYPES.START_RECORDING,
+          tabId,
+        })
+        .catch(() => ({ ok: false, error: "Couldn't reach the page." }) as ExtensionResponse);
+
+      if (!response.ok) return response;
+
+      await setTabState(tabId, { active: true, recording: true });
+      return response;
+    }
+
+    case MESSAGE_TYPES.STOP_RECORDING: {
+      const response = await chrome.tabs
+        .sendMessage<ExtensionMessage, ExtensionResponse>(tabId, {
+          type: MESSAGE_TYPES.STOP_RECORDING,
+          tabId,
+        })
+        .catch(() => ({ ok: false, error: "Couldn't reach the page." }) as ExtensionResponse);
+
+      await setTabState(tabId, { active: true, recording: false });
+      if (response.ok && response.capture) {
+        await setTabCapture(tabId, response.capture);
+      }
+      return response;
+    }
+
+    case MESSAGE_TYPES.RECORDING_AUTO_STOPPED: {
+      await setTabState(tabId, { active: true, recording: false });
+      await setTabCapture(tabId, message.capture);
       return { ok: true };
     }
 
@@ -121,7 +176,9 @@ chrome.runtime.onMessage.addListener(
 
 // Drop state for closed tabs.
 chrome.tabs.onRemoved.addListener((tabId) => {
-  chrome.storage.session.remove([stateKey(tabId), selectionKey(tabId)]).catch(() => undefined);
+  chrome.storage.session
+    .remove([stateKey(tabId), selectionKey(tabId), captureKey(tabId)])
+    .catch(() => undefined);
 });
 
 export {};

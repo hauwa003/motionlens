@@ -44,17 +44,17 @@ export class ElementPicker {
   private hovered: Element | null = null;
   private selected = new Set<Element>();
   private enabled = false;
+  private paused = false;
 
   constructor(private callbacks: PickerCallbacks) {}
 
   enable(): void {
     if (this.enabled) return;
     this.enabled = true;
+    this.paused = false;
     this.mount();
+    this.attachInteraction();
 
-    document.addEventListener("mousemove", this.handleMouseMove, true);
-    document.addEventListener("click", this.handleClick, true);
-    window.addEventListener("keydown", this.handleKeyDown, true);
     window.addEventListener("scroll", this.redraw, { capture: true, passive: true });
     window.addEventListener("resize", this.redraw, { passive: true });
   }
@@ -63,9 +63,7 @@ export class ElementPicker {
     if (!this.enabled) return;
     this.enabled = false;
 
-    document.removeEventListener("mousemove", this.handleMouseMove, true);
-    document.removeEventListener("click", this.handleClick, true);
-    window.removeEventListener("keydown", this.handleKeyDown, true);
+    this.detachInteraction();
     window.removeEventListener("scroll", this.redraw, true);
     window.removeEventListener("resize", this.redraw);
 
@@ -75,8 +73,44 @@ export class ElementPicker {
     this.host = null;
   }
 
+  /**
+   * Stop intercepting mouse/keyboard so the user can interact with the page
+   * naturally (recording mode). Selection outlines stay visible.
+   */
+  pause(): void {
+    if (!this.enabled || this.paused) return;
+    this.paused = true;
+    this.detachInteraction();
+    this.hovered = null;
+    this.redraw();
+  }
+
+  /** Resume picking after a pause. */
+  resume(): void {
+    if (!this.enabled || !this.paused) return;
+    this.paused = false;
+    this.attachInteraction();
+  }
+
   getSelection(): SelectedElementInfo[] {
     return Array.from(this.selected, describeElement);
+  }
+
+  /** Raw selected elements, for handing to the capture recorder. */
+  getSelectedElements(): Element[] {
+    return Array.from(this.selected);
+  }
+
+  private attachInteraction(): void {
+    document.addEventListener("mousemove", this.handleMouseMove, true);
+    document.addEventListener("click", this.handleClick, true);
+    window.addEventListener("keydown", this.handleKeyDown, true);
+  }
+
+  private detachInteraction(): void {
+    document.removeEventListener("mousemove", this.handleMouseMove, true);
+    document.removeEventListener("click", this.handleClick, true);
+    window.removeEventListener("keydown", this.handleKeyDown, true);
   }
 
   clearSelection(): void {

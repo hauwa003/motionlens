@@ -1,3 +1,5 @@
+import type { RawCapture } from "@motionlens/analysis";
+
 /**
  * Message contracts shared between popup, side panel, background service
  * worker, and content scripts.
@@ -27,10 +29,21 @@ export const MESSAGE_TYPES = {
   GET_SELECTION: "motionlens/get-selection",
   /** UI → background → content script: clear the selection. */
   CLEAR_SELECTION: "motionlens/clear-selection",
+  /** UI → background → content script: start recording the selection. */
+  START_RECORDING: "motionlens/start-recording",
+  /** UI → background → content script: stop recording, returns the capture. */
+  STOP_RECORDING: "motionlens/stop-recording",
+  /** Content → background: recorder stopped itself (timeout/limit). */
+  RECORDING_AUTO_STOPPED: "motionlens/recording-auto-stopped",
+  /** UI → background: read the last capture for a tab. */
+  GET_CAPTURE: "motionlens/get-capture",
+  /** Background → UI surfaces: a new capture is available for a tab. */
+  CAPTURE_CHANGED: "motionlens/capture-changed",
 } as const;
 
 export interface TabState {
   active: boolean;
+  recording: boolean;
 }
 
 /** Snapshot of a selected element, safe to send across the extension. */
@@ -56,12 +69,18 @@ export type ExtensionMessage =
       selection: SelectedElementInfo[];
     }
   | { type: typeof MESSAGE_TYPES.GET_SELECTION; tabId?: number }
-  | { type: typeof MESSAGE_TYPES.CLEAR_SELECTION; tabId?: number };
+  | { type: typeof MESSAGE_TYPES.CLEAR_SELECTION; tabId?: number }
+  | { type: typeof MESSAGE_TYPES.START_RECORDING; tabId?: number }
+  | { type: typeof MESSAGE_TYPES.STOP_RECORDING; tabId?: number }
+  | { type: typeof MESSAGE_TYPES.RECORDING_AUTO_STOPPED; tabId?: number; capture: RawCapture }
+  | { type: typeof MESSAGE_TYPES.GET_CAPTURE; tabId?: number }
+  | { type: typeof MESSAGE_TYPES.CAPTURE_CHANGED; tabId: number; capture: RawCapture };
 
 export interface ExtensionResponse {
   ok: boolean;
   state?: TabState;
   selection?: SelectedElementInfo[];
+  capture?: RawCapture;
   /** Set by the content script's PING response to confirm DOM access. */
   dom?: { title: string; elementCount: number };
   error?: string;
