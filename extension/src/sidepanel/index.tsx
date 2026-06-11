@@ -3,6 +3,13 @@ import { useEffect, useMemo, useState } from "react";
 
 import { MotionBreakdown } from "./breakdown";
 import { PromptPanel } from "./prompts";
+import {
+  clearOriginal,
+  loadOriginal,
+  saveOriginal,
+  ValidationPanel,
+  type SavedOriginal,
+} from "./validation";
 
 import {
   getActiveTab,
@@ -64,9 +71,11 @@ function ElementCard({ element }: { element: SelectedElementInfo }) {
 function CaptureReport({
   capture,
   frameworks,
+  onSaveOriginal,
 }: {
   capture: RawCapture;
   frameworks: FrameworkScore[];
+  onSaveOriginal: () => void;
 }) {
   const graph = useMemo(() => buildMotionGraph(capture), [capture]);
 
@@ -84,13 +93,25 @@ function CaptureReport({
     <section className="mt-4 border-t border-zinc-900 pt-4">
       <div className="flex items-center justify-between">
         <h2 className="text-xs font-medium text-zinc-300">Last capture</h2>
-        <button
-          type="button"
-          onClick={exportJson}
-          className="text-[11px] text-zinc-500 transition-colors hover:text-zinc-200"
-        >
-          Export JSON
-        </button>
+        <div className="flex gap-3">
+          {graph.nodes.length > 0 && (
+            <button
+              type="button"
+              onClick={onSaveOriginal}
+              className="text-[11px] text-zinc-500 transition-colors hover:text-zinc-200"
+              title="Save this capture as the original to validate a recreation against"
+            >
+              Save as original
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={exportJson}
+            className="text-[11px] text-zinc-500 transition-colors hover:text-zinc-200"
+          >
+            Export JSON
+          </button>
+        </div>
       </div>
 
       {graph.nodes.length > 0 ? (
@@ -138,7 +159,23 @@ function IndexSidePanel() {
   const [selection, setSelection] = useState<SelectedElementInfo[]>([]);
   const [capture, setCapture] = useState<RawCapture | null>(null);
   const [frameworks, setFrameworks] = useState<FrameworkScore[]>([]);
+  const [original, setOriginal] = useState<SavedOriginal | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const recreationGraph = useMemo(() => (capture ? buildMotionGraph(capture) : null), [capture]);
+
+  useEffect(() => {
+    void loadOriginal().then(setOriginal);
+  }, []);
+
+  const handleSaveOriginal = () => {
+    if (!recreationGraph) return;
+    void saveOriginal(recreationGraph).then(setOriginal);
+  };
+
+  const handleClearOriginal = () => {
+    void clearOriginal().then(() => setOriginal(null));
+  };
 
   useEffect(() => {
     void (async () => {
@@ -245,7 +282,21 @@ function IndexSidePanel() {
 
             {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
 
-            {capture && <CaptureReport capture={capture} frameworks={frameworks} />}
+            {capture && (
+              <CaptureReport
+                capture={capture}
+                frameworks={frameworks}
+                onSaveOriginal={handleSaveOriginal}
+              />
+            )}
+
+            {original && recreationGraph && recreationGraph.nodes.length > 0 && (
+              <ValidationPanel
+                original={original}
+                recreation={recreationGraph}
+                onClearOriginal={handleClearOriginal}
+              />
+            )}
           </>
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
