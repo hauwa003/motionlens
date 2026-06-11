@@ -13,6 +13,7 @@ import type { DiscoveredInteraction } from "~lib/scanner";
 import { MotionBreakdown } from "./breakdown";
 import { HistoryList } from "./history";
 import { PromptPanel } from "./prompts";
+import { SyncPanel } from "./sync";
 import {
   clearOriginal,
   loadOriginal,
@@ -451,12 +452,17 @@ function IndexSidePanel() {
         )}
 
         {!viewing && (
-          <HistoryList
-            entries={history}
-            onOpen={setViewing}
-            onDelete={(entry) => void deleteAnalysis(entry.id).then(setHistory)}
-            onUpdateTags={(entry, tags) => void updateAnalysisTags(entry.id, tags).then(setHistory)}
-          />
+          <>
+            <HistoryList
+              entries={history}
+              onOpen={setViewing}
+              onDelete={(entry) => void deleteAnalysis(entry.id).then(setHistory)}
+              onUpdateTags={(entry, tags) =>
+                void updateAnalysisTags(entry.id, tags).then(setHistory)
+              }
+            />
+            <SyncPanel onHistoryChanged={setHistory} />
+          </>
         )}
       </main>
 

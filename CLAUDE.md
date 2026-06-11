@@ -13,8 +13,8 @@ Chrome extension that reverse-engineers website animations, interactions, and mi
 - **Backend:** Next.js, tRPC, Prisma
 - **Database:** PostgreSQL (Supabase)
 - **Cache:** Redis
-- **Auth:** Clerk
-- **Payments:** Stripe
+- **Auth:** Supabase Auth (v1) — Clerk considered post-v1
+- **Payments:** Stripe (post-v1 — v1 ships free, no pricing)
 - **AI:** Claude API (primary), OpenAI (secondary)
 - **Infrastructure:** Vercel, Railway
 
