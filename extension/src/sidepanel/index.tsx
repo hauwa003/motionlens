@@ -1,7 +1,14 @@
 import { buildMotionGraph, type FrameworkScore, type RawCapture } from "@motionlens/analysis";
 import { useEffect, useMemo, useState } from "react";
 
-import { deleteAnalysis, listAnalyses, saveAnalysis, type SavedAnalysis } from "~lib/history";
+import {
+  deleteAnalysis,
+  listAnalyses,
+  saveAnalysis,
+  updateAnalysisTags,
+  type SavedAnalysis,
+} from "~lib/history";
+import type { DiscoveredInteraction } from "~lib/scanner";
 
 import { MotionBreakdown } from "./breakdown";
 import { HistoryList } from "./history";
@@ -177,6 +184,8 @@ function IndexSidePanel() {
   const [original, setOriginal] = useState<SavedOriginal | null>(null);
   const [history, setHistory] = useState<SavedAnalysis[]>([]);
   const [viewing, setViewing] = useState<SavedAnalysis | null>(null);
+  const [discovered, setDiscovered] = useState<DiscoveredInteraction[] | null>(null);
+  const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const recreationGraph = useMemo(() => (capture ? buildMotionGraph(capture) : null), [capture]);
@@ -245,6 +254,29 @@ function IndexSidePanel() {
     setError(null);
     const response = await sendToBackground({ type, tabId } as ExtensionMessage);
     if (!response.ok) setError(response.error ?? "Something went wrong.");
+  };
+
+  const scanPage = async () => {
+    if (tabId === null) return;
+    setScanning(true);
+    setError(null);
+    const response = await sendToBackground({ type: MESSAGE_TYPES.SCAN_INTERACTIONS, tabId });
+    setScanning(false);
+    if (!response.ok) {
+      setError(response.error ?? "Scan failed.");
+      return;
+    }
+    setDiscovered(response.interactions ?? []);
+  };
+
+  const selectDiscovered = async (selector: string) => {
+    if (tabId === null) return;
+    const response = await sendToBackground({
+      type: MESSAGE_TYPES.SELECT_ELEMENT,
+      tabId,
+      selector,
+    });
+    if (!response.ok) setError(response.error ?? "Couldn't select that element.");
   };
 
   return (
@@ -370,11 +402,60 @@ function IndexSidePanel() {
           </div>
         )}
 
+        {!viewing && state.active && (
+          <section className="mt-4 border-t border-zinc-900 pt-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xs font-medium text-zinc-300">Discover</h2>
+              <button
+                type="button"
+                disabled={scanning}
+                onClick={() => void scanPage()}
+                className="text-[11px] text-zinc-500 transition-colors hover:text-zinc-200 disabled:opacity-50"
+              >
+                {scanning ? "Scanning…" : discovered ? "Rescan" : "Scan this page"}
+              </button>
+            </div>
+            {discovered && discovered.length === 0 && (
+              <p className="mt-2 text-[11px] text-zinc-600">
+                No likely interactions found on this page.
+              </p>
+            )}
+            {discovered && discovered.length > 0 && (
+              <ul className="mt-2 flex max-h-56 flex-col gap-1 overflow-y-auto">
+                {discovered.map((interaction) => (
+                  <li
+                    key={interaction.selector}
+                    className="flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900/60 px-2 py-1.5"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p
+                        className="truncate font-mono text-[10px] text-zinc-300"
+                        title={interaction.selector}
+                      >
+                        {interaction.selector}
+                      </p>
+                      <p className="text-[9px] text-zinc-600">{interaction.evidence.join(" · ")}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void selectDiscovered(interaction.selector)}
+                      className="shrink-0 rounded bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-200 hover:bg-zinc-700"
+                    >
+                      Select
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
+
         {!viewing && (
           <HistoryList
             entries={history}
             onOpen={setViewing}
             onDelete={(entry) => void deleteAnalysis(entry.id).then(setHistory)}
+            onUpdateTags={(entry, tags) => void updateAnalysisTags(entry.id, tags).then(setHistory)}
           />
         )}
       </main>

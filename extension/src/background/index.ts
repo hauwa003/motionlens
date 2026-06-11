@@ -140,6 +140,13 @@ async function handleMessage(
       return { ok: true };
     }
 
+    case MESSAGE_TYPES.SCAN_INTERACTIONS:
+    case MESSAGE_TYPES.SELECT_ELEMENT:
+      // Pass-through commands handled by the content script in the tab.
+      return chrome.tabs
+        .sendMessage<ExtensionMessage, ExtensionResponse>(tabId, { ...message, tabId })
+        .catch(() => ({ ok: false, error: "Couldn't reach the page." }) as ExtensionResponse);
+
     case MESSAGE_TYPES.START_RECORDING: {
       const response = await chrome.tabs
         .sendMessage<ExtensionMessage, ExtensionResponse>(tabId, {

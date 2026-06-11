@@ -1,5 +1,7 @@
 import type { FrameworkScore, FrameworkSignals, RawCapture } from "@motionlens/analysis";
 
+import type { DiscoveredInteraction } from "~lib/scanner";
+
 /**
  * Message contracts shared between popup, side panel, background service
  * worker, and content scripts.
@@ -45,6 +47,10 @@ export const MESSAGE_TYPES = {
   GET_FRAMEWORKS: "motionlens/get-frameworks",
   /** Background → UI surfaces: framework detection updated for a tab. */
   FRAMEWORKS_CHANGED: "motionlens/frameworks-changed",
+  /** UI → background → content: scan the page for likely interactions. */
+  SCAN_INTERACTIONS: "motionlens/scan-interactions",
+  /** UI → background → content: add an element to the selection by selector. */
+  SELECT_ELEMENT: "motionlens/select-element",
 } as const;
 
 export interface TabState {
@@ -83,7 +89,9 @@ export type ExtensionMessage =
   | { type: typeof MESSAGE_TYPES.CAPTURE_CHANGED; tabId: number; capture: RawCapture }
   | { type: typeof MESSAGE_TYPES.FRAMEWORK_SIGNALS; tabId?: number; signals: FrameworkSignals }
   | { type: typeof MESSAGE_TYPES.GET_FRAMEWORKS; tabId?: number }
-  | { type: typeof MESSAGE_TYPES.FRAMEWORKS_CHANGED; tabId: number; frameworks: FrameworkScore[] };
+  | { type: typeof MESSAGE_TYPES.FRAMEWORKS_CHANGED; tabId: number; frameworks: FrameworkScore[] }
+  | { type: typeof MESSAGE_TYPES.SCAN_INTERACTIONS; tabId?: number }
+  | { type: typeof MESSAGE_TYPES.SELECT_ELEMENT; tabId?: number; selector: string };
 
 export interface ExtensionResponse {
   ok: boolean;
@@ -91,6 +99,7 @@ export interface ExtensionResponse {
   selection?: SelectedElementInfo[];
   capture?: RawCapture;
   frameworks?: FrameworkScore[];
+  interactions?: DiscoveredInteraction[];
   /** Set by the content script's PING response to confirm DOM access. */
   dom?: { title: string; elementCount: number };
   error?: string;

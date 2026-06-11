@@ -101,6 +101,22 @@ export class ElementPicker {
     return Array.from(this.selected);
   }
 
+  /** Add an element to the selection by CSS selector (discovery panel). */
+  selectBySelector(selector: string): boolean {
+    if (!this.enabled) return false;
+    let element: Element | null = null;
+    try {
+      element = document.querySelector(selector);
+    } catch {
+      return false;
+    }
+    if (!element || this.selected.has(element)) return false;
+    this.selected.add(element);
+    this.redraw();
+    this.callbacks.onSelectionChange(this.getSelection());
+    return true;
+  }
+
   private attachInteraction(): void {
     document.addEventListener("mousemove", this.handleMouseMove, true);
     document.addEventListener("click", this.handleClick, true);

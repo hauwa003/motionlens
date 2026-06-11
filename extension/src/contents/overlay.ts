@@ -9,6 +9,7 @@ import {
 } from "~lib/messaging";
 import { ElementPicker } from "~lib/picker/picker";
 import { buildSelector } from "~lib/picker/selector";
+import { scanPageInteractions } from "~lib/scanner";
 
 /**
  * Content script — element picker overlay and capture recording.
@@ -94,6 +95,18 @@ chrome.runtime.onMessage.addListener(
         picker.clearSelection();
         sendResponse({ ok: true });
         break;
+
+      case MESSAGE_TYPES.SCAN_INTERACTIONS:
+        sendResponse({ ok: true, interactions: scanPageInteractions() });
+        break;
+
+      case MESSAGE_TYPES.SELECT_ELEMENT: {
+        const selected = picker.selectBySelector(message.selector);
+        sendResponse(
+          selected ? { ok: true } : { ok: false, error: "Element not found on the page." },
+        );
+        break;
+      }
 
       case MESSAGE_TYPES.START_RECORDING:
         sendResponse(startRecording());
