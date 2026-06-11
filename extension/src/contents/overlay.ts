@@ -1,16 +1,31 @@
 import type { PlasmoCSConfig } from "plasmo";
 
-import { MESSAGE_TYPES, type ExtensionMessage, type ExtensionResponse } from "~lib/messaging";
+import {
+  MESSAGE_TYPES,
+  sendToBackground,
+  type ExtensionMessage,
+  type ExtensionResponse,
+} from "~lib/messaging";
+import { ElementPicker } from "~lib/picker/picker";
 
 /**
- * Content script — confirms DOM access and reacts to activation state.
- * Phase 3 replaces the activation handling with the element picker overlay.
- * MotionLens is strictly read-only: it must never modify the target website.
+ * Content script — element picker overlay and DOM access confirmation.
+ * MotionLens is strictly read-only: the only DOM addition is the picker's
+ * inert overlay host, and page clicks are intercepted only while picking.
  */
 
 export const config: PlasmoCSConfig = {
   matches: ["<all_urls>"],
 };
+
+const picker = new ElementPicker({
+  onSelectionChange: (selection) => {
+    void sendToBackground({ type: MESSAGE_TYPES.SELECTION_CHANGED, selection });
+  },
+  onCancel: () => {
+    void sendToBackground({ type: MESSAGE_TYPES.DEACTIVATE });
+  },
+});
 
 chrome.runtime.onMessage.addListener(
   (message: ExtensionMessage, _sender, sendResponse: (response: ExtensionResponse) => void) => {
@@ -26,10 +41,16 @@ chrome.runtime.onMessage.addListener(
         break;
 
       case MESSAGE_TYPES.STATE_CHANGED:
-        console.debug(
-          `[MotionLens] ${message.state.active ? "activated" : "deactivated"} on`,
-          window.location.href,
-        );
+        if (message.state.active) {
+          picker.enable();
+        } else {
+          picker.disable();
+        }
+        sendResponse({ ok: true });
+        break;
+
+      case MESSAGE_TYPES.CLEAR_SELECTION:
+        picker.clearSelection();
         sendResponse({ ok: true });
         break;
 
@@ -39,3 +60,9 @@ chrome.runtime.onMessage.addListener(
     return false;
   },
 );
+
+// If the page loaded (or reloaded) while this tab is already active,
+// re-enable the picker.
+void sendToBackground({ type: MESSAGE_TYPES.GET_STATE }).then((response) => {
+  if (response.state?.active) picker.enable();
+});
