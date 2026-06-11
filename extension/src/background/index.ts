@@ -1,4 +1,4 @@
-import type { RawCapture } from "@motionlens/analysis";
+import { scoreFrameworks, type FrameworkScore, type RawCapture } from "@motionlens/analysis";
 
 import {
   MESSAGE_TYPES,
@@ -20,6 +20,7 @@ import {
 const stateKey = (tabId: number) => `tab-state:${tabId}`;
 const selectionKey = (tabId: number) => `tab-selection:${tabId}`;
 const captureKey = (tabId: number) => `tab-capture:${tabId}`;
+const frameworksKey = (tabId: number) => `tab-frameworks:${tabId}`;
 
 const INACTIVE: TabState = { active: false, recording: false };
 
@@ -86,6 +87,21 @@ async function handleMessage(
 
     case MESSAGE_TYPES.GET_CAPTURE:
       return { ok: true, capture: await getTabCapture(tabId) };
+
+    case MESSAGE_TYPES.GET_FRAMEWORKS: {
+      const key = frameworksKey(tabId);
+      const result = await chrome.storage.session.get(key);
+      return { ok: true, frameworks: (result[key] as FrameworkScore[] | undefined) ?? [] };
+    }
+
+    case MESSAGE_TYPES.FRAMEWORK_SIGNALS: {
+      const frameworks = scoreFrameworks(message.signals);
+      await chrome.storage.session.set({ [frameworksKey(tabId)]: frameworks });
+      chrome.runtime
+        .sendMessage({ type: MESSAGE_TYPES.FRAMEWORKS_CHANGED, tabId, frameworks })
+        .catch(() => undefined);
+      return { ok: true, frameworks };
+    }
 
     case MESSAGE_TYPES.ACTIVATE: {
       // Confirm the content script has DOM access before reporting active.
@@ -177,7 +193,7 @@ chrome.runtime.onMessage.addListener(
 // Drop state for closed tabs.
 chrome.tabs.onRemoved.addListener((tabId) => {
   chrome.storage.session
-    .remove([stateKey(tabId), selectionKey(tabId), captureKey(tabId)])
+    .remove([stateKey(tabId), selectionKey(tabId), captureKey(tabId), frameworksKey(tabId)])
     .catch(() => undefined);
 });
 

@@ -1,4 +1,4 @@
-import { CaptureRecorder, type RawCapture } from "@motionlens/analysis";
+import { CaptureRecorder, type FrameworkSignals, type RawCapture } from "@motionlens/analysis";
 import type { PlasmoCSConfig } from "plasmo";
 
 import {
@@ -109,6 +109,17 @@ chrome.runtime.onMessage.addListener(
     return false;
   },
 );
+
+// Forward framework signals from the MAIN-world detector script.
+window.addEventListener("message", (event: MessageEvent) => {
+  if (event.source !== window) return;
+  const data = event.data as { source?: string; type?: string; signals?: unknown };
+  if (data?.source !== "motionlens-detector" || data.type !== "framework-signals") return;
+  void sendToBackground({
+    type: MESSAGE_TYPES.FRAMEWORK_SIGNALS,
+    signals: data.signals as FrameworkSignals,
+  });
+});
 
 // If the page loaded (or reloaded) while this tab is already active,
 // re-enable the picker.

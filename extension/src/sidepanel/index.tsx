@@ -1,5 +1,7 @@
-import { detectTrigger, diffCapture, type RawCapture } from "@motionlens/analysis";
+import { buildMotionGraph, type FrameworkScore, type RawCapture } from "@motionlens/analysis";
 import { useEffect, useMemo, useState } from "react";
+
+import { MotionBreakdown } from "./breakdown";
 
 import {
   getActiveTab,
@@ -58,9 +60,14 @@ function ElementCard({ element }: { element: SelectedElementInfo }) {
   );
 }
 
-function CaptureReport({ capture }: { capture: RawCapture }) {
-  const changes = useMemo(() => diffCapture(capture), [capture]);
-  const trigger = useMemo(() => detectTrigger(capture), [capture]);
+function CaptureReport({
+  capture,
+  frameworks,
+}: {
+  capture: RawCapture;
+  frameworks: FrameworkScore[];
+}) {
+  const graph = useMemo(() => buildMotionGraph(capture), [capture]);
 
   const exportJson = () => {
     const blob = new Blob([JSON.stringify(capture, null, 2)], { type: "application/json" });
@@ -85,86 +92,34 @@ function CaptureReport({ capture }: { capture: RawCapture }) {
         </button>
       </div>
 
-      <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 rounded-md border border-zinc-800 bg-zinc-900/60 p-3 text-[11px] text-zinc-400">
-        <div className="flex justify-between">
-          <dt>Trigger</dt>
-          <dd className="font-mono text-violet-300">{trigger}</dd>
-        </div>
-        <div className="flex justify-between">
-          <dt>Duration</dt>
-          <dd className="font-mono text-zinc-300">{capture.durationMs} ms</dd>
-        </div>
-        <div className="flex justify-between">
-          <dt>Frames</dt>
-          <dd className="font-mono text-zinc-300">{capture.frames.length}</dd>
-        </div>
-        <div className="flex justify-between">
-          <dt>Elements</dt>
-          <dd className="font-mono text-zinc-300">{capture.observedElementCount}</dd>
-        </div>
-        {capture.stopReason !== "manual" && (
-          <div className="col-span-2 flex justify-between">
-            <dt>Stopped</dt>
-            <dd className="font-mono text-amber-300">{capture.stopReason}</dd>
-          </div>
-        )}
-      </dl>
+      {graph.nodes.length > 0 ? (
+        <div className="mt-3">
+          <MotionBreakdown graph={graph} frameworks={frameworks} />
 
-      {changes.length > 0 ? (
-        <>
-          <h3 className="mt-4 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
-            Property changes
-          </h3>
-          <ul className="mt-2 flex flex-col gap-2">
-            {changes.map((change) => (
-              <li
-                key={`${change.selector}-${change.property}`}
-                className="rounded-md border border-zinc-800 bg-zinc-900/60 p-3"
-              >
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="font-mono text-xs text-emerald-300">{change.property}</span>
-                  <span className="font-mono text-[10px] text-zinc-500">
-                    {change.startMs}–{change.endMs} ms
+          <details className="mt-4">
+            <summary className="cursor-pointer text-[11px] font-medium uppercase tracking-wide text-zinc-500 hover:text-zinc-300">
+              Raw frames ({capture.frames.length}
+              {capture.stopReason !== "manual" ? ` · stopped: ${capture.stopReason}` : ""})
+            </summary>
+            <ol className="mt-2 max-h-64 overflow-y-auto rounded-md border border-zinc-800 bg-zinc-900/60 p-2 font-mono text-[10px] leading-relaxed text-zinc-400">
+              {capture.frames.map((frame, index) => (
+                <li key={index} className="flex gap-2">
+                  <span className="w-12 shrink-0 text-right text-zinc-600">
+                    {frame.timestamp}ms
                   </span>
-                </div>
-                <p
-                  className="mt-1 truncate font-mono text-[10px] text-zinc-600"
-                  title={change.selector}
-                >
-                  {change.selector}
-                </p>
-                <div className="mt-2 grid grid-cols-[1fr_auto_1fr] items-center gap-2 font-mono text-[10px]">
-                  <span className="truncate text-zinc-400" title={change.from}>
-                    {change.from}
+                  <span
+                    className="truncate"
+                    title={`${frame.selector} ${JSON.stringify(frame.styles)}`}
+                  >
+                    {Object.entries(frame.styles)
+                      .map(([property, value]) => `${property}: ${value}`)
+                      .join("  ")}
                   </span>
-                  <span className="text-zinc-600">→</span>
-                  <span className="truncate text-right text-zinc-200" title={change.to}>
-                    {change.to}
-                  </span>
-                </div>
-              </li>
-            ))}
-          </ul>
-
-          <h3 className="mt-4 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
-            Timeline
-          </h3>
-          <ol className="mt-2 max-h-64 overflow-y-auto rounded-md border border-zinc-800 bg-zinc-900/60 p-2 font-mono text-[10px] leading-relaxed text-zinc-400">
-            {capture.frames.map((frame, index) => (
-              <li key={index} className="flex gap-2">
-                <span className="w-12 shrink-0 text-right text-zinc-600">{frame.timestamp}ms</span>
-                <span
-                  className="truncate"
-                  title={`${frame.selector} ${JSON.stringify(frame.styles)}`}
-                >
-                  {Object.entries(frame.styles)
-                    .map(([property, value]) => `${property}: ${value}`)
-                    .join("  ")}
-                </span>
-              </li>
-            ))}
-          </ol>
-        </>
+                </li>
+              ))}
+            </ol>
+          </details>
+        </div>
       ) : (
         <p className="mt-3 text-xs text-zinc-500">
           No style changes captured. Trigger the interaction while recording.
@@ -179,6 +134,7 @@ function IndexSidePanel() {
   const [tabId, setTabId] = useState<number | null>(null);
   const [selection, setSelection] = useState<SelectedElementInfo[]>([]);
   const [capture, setCapture] = useState<RawCapture | null>(null);
+  const [frameworks, setFrameworks] = useState<FrameworkScore[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -187,14 +143,17 @@ function IndexSidePanel() {
       if (!tab?.id) return;
       setTabId(tab.id);
 
-      const [stateResponse, selectionResponse, captureResponse] = await Promise.all([
-        sendToBackground({ type: MESSAGE_TYPES.GET_STATE, tabId: tab.id }),
-        sendToBackground({ type: MESSAGE_TYPES.GET_SELECTION, tabId: tab.id }),
-        sendToBackground({ type: MESSAGE_TYPES.GET_CAPTURE, tabId: tab.id }),
-      ]);
+      const [stateResponse, selectionResponse, captureResponse, frameworksResponse] =
+        await Promise.all([
+          sendToBackground({ type: MESSAGE_TYPES.GET_STATE, tabId: tab.id }),
+          sendToBackground({ type: MESSAGE_TYPES.GET_SELECTION, tabId: tab.id }),
+          sendToBackground({ type: MESSAGE_TYPES.GET_CAPTURE, tabId: tab.id }),
+          sendToBackground({ type: MESSAGE_TYPES.GET_FRAMEWORKS, tabId: tab.id }),
+        ]);
       if (stateResponse.state) setState(stateResponse.state);
       setSelection(selectionResponse.selection ?? []);
       setCapture(captureResponse.capture ?? null);
+      setFrameworks(frameworksResponse.frameworks ?? []);
     })();
   }, []);
 
@@ -209,6 +168,9 @@ function IndexSidePanel() {
       }
       if (message.type === MESSAGE_TYPES.CAPTURE_CHANGED && message.tabId === tabId) {
         setCapture(message.capture);
+      }
+      if (message.type === MESSAGE_TYPES.FRAMEWORKS_CHANGED && message.tabId === tabId) {
+        setFrameworks(message.frameworks);
       }
     };
     chrome.runtime.onMessage.addListener(listener);
@@ -280,7 +242,7 @@ function IndexSidePanel() {
 
             {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
 
-            {capture && <CaptureReport capture={capture} />}
+            {capture && <CaptureReport capture={capture} frameworks={frameworks} />}
           </>
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">

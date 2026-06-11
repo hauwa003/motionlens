@@ -28,3 +28,10 @@ export {
   type NodeTiming,
 } from "./classify";
 export { buildMotionGraph } from "./builder";
+export {
+  DOM_MARKER_SELECTORS,
+  GLOBAL_PROBES,
+  scoreFrameworks,
+  type FrameworkScore,
+  type FrameworkSignals,
+} from "./frameworks";

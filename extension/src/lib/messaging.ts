@@ -1,4 +1,4 @@
-import type { RawCapture } from "@motionlens/analysis";
+import type { FrameworkScore, FrameworkSignals, RawCapture } from "@motionlens/analysis";
 
 /**
  * Message contracts shared between popup, side panel, background service
@@ -39,6 +39,12 @@ export const MESSAGE_TYPES = {
   GET_CAPTURE: "motionlens/get-capture",
   /** Background → UI surfaces: a new capture is available for a tab. */
   CAPTURE_CHANGED: "motionlens/capture-changed",
+  /** Content → background: framework signals collected on the page. */
+  FRAMEWORK_SIGNALS: "motionlens/framework-signals",
+  /** UI → background: read detected frameworks for a tab. */
+  GET_FRAMEWORKS: "motionlens/get-frameworks",
+  /** Background → UI surfaces: framework detection updated for a tab. */
+  FRAMEWORKS_CHANGED: "motionlens/frameworks-changed",
 } as const;
 
 export interface TabState {
@@ -74,13 +80,17 @@ export type ExtensionMessage =
   | { type: typeof MESSAGE_TYPES.STOP_RECORDING; tabId?: number }
   | { type: typeof MESSAGE_TYPES.RECORDING_AUTO_STOPPED; tabId?: number; capture: RawCapture }
   | { type: typeof MESSAGE_TYPES.GET_CAPTURE; tabId?: number }
-  | { type: typeof MESSAGE_TYPES.CAPTURE_CHANGED; tabId: number; capture: RawCapture };
+  | { type: typeof MESSAGE_TYPES.CAPTURE_CHANGED; tabId: number; capture: RawCapture }
+  | { type: typeof MESSAGE_TYPES.FRAMEWORK_SIGNALS; tabId?: number; signals: FrameworkSignals }
+  | { type: typeof MESSAGE_TYPES.GET_FRAMEWORKS; tabId?: number }
+  | { type: typeof MESSAGE_TYPES.FRAMEWORKS_CHANGED; tabId: number; frameworks: FrameworkScore[] };
 
 export interface ExtensionResponse {
   ok: boolean;
   state?: TabState;
   selection?: SelectedElementInfo[];
   capture?: RawCapture;
+  frameworks?: FrameworkScore[];
   /** Set by the content script's PING response to confirm DOM access. */
   dom?: { title: string; elementCount: number };
   error?: string;
