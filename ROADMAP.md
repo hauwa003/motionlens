@@ -163,7 +163,7 @@
 
 ### Phase 17: Cloud Sync (Requires Backend)
 
-- User authentication (Clerk)
+- User authentication (Supabase Auth, magic links — Clerk deferred post-v1)
 - PostgreSQL database setup (Supabase)
 - Save analyses to cloud
 - Sync across devices
@@ -180,9 +180,9 @@
 
 ---
 
-## Milestone 6: Premium & Monetization
+## Milestone 6: Premium & Monetization (Post-v1)
 
-**Goal:** Paid features that unlock advanced capabilities.
+**Goal:** Paid features that unlock advanced capabilities. **Deferred — v1 ships free with no pricing.** The Motion Library, batch prompt generation, and single-page interaction discovery from Phase 20 already shipped free.
 
 ### Phase 19: Stripe Integration
 
