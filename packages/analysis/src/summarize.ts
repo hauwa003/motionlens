@@ -4,8 +4,14 @@ import type { CaptureEvent, RawCapture } from "./capture/types";
 
 /**
  * Pure analysis helpers over a RawCapture — property change summaries and
- * basic trigger detection. Phase 6 builds the full MotionGraph on top.
+ * trigger detection. The MotionGraph builder (Phase 6) composes these.
  */
+
+export interface ValueSample {
+  /** Ms from recording start. */
+  timestamp: number;
+  value: string;
+}
 
 export interface PropertyChangeSummary {
   selector: string;
@@ -19,6 +25,8 @@ export interface PropertyChangeSummary {
   /** When the value last changed, ms from recording start. */
   endMs: number;
   durationMs: number;
+  /** Every observed value, baseline included, in capture order. */
+  samples: ValueSample[];
 }
 
 /**
@@ -31,7 +39,7 @@ export function diffCapture(capture: RawCapture): PropertyChangeSummary[] {
     to: string;
     startMs: number | null;
     endMs: number;
-    hasBaseline: boolean;
+    samples: ValueSample[];
   }
 
   const tracks = new Map<string, Track>();
@@ -49,7 +57,7 @@ export function diffCapture(capture: RawCapture): PropertyChangeSummary[] {
           to: value,
           startMs: null,
           endMs: frame.timestamp,
-          hasBaseline: true,
+          samples: [{ timestamp: frame.timestamp, value }],
         });
         continue;
       }
@@ -58,6 +66,7 @@ export function diffCapture(capture: RawCapture): PropertyChangeSummary[] {
         track.startMs ??= frame.timestamp;
         track.endMs = frame.timestamp;
         track.to = value;
+        track.samples.push({ timestamp: frame.timestamp, value });
       }
     }
   }
@@ -74,6 +83,7 @@ export function diffCapture(capture: RawCapture): PropertyChangeSummary[] {
       startMs: track.startMs,
       endMs: track.endMs,
       durationMs: track.endMs - track.startMs,
+      samples: track.samples,
     });
   }
 
@@ -89,21 +99,39 @@ const EVENT_TO_TRIGGER: Partial<Record<CaptureEvent["type"], TriggerType>> = {
   focusin: "focus",
 };
 
+export interface TriggerClassification {
+  trigger: TriggerType;
+  /** 0–1. */
+  confidence: number;
+  /** Timestamp of the triggering event, ms from recording start. */
+  eventMs: number;
+}
+
 /**
- * Basic trigger detection: the most recent user event preceding the first
- * style change. No qualifying event means the motion started on its own
- * (page load / autonomous animation).
+ * Trigger classification: the most recent user event preceding the first
+ * style change, with confidence based on how close it was. No qualifying
+ * event means the motion started on its own (page load / autonomous).
  */
-export function detectTrigger(capture: RawCapture): TriggerType {
+export function classifyTrigger(capture: RawCapture): TriggerClassification {
   const changes = diffCapture(capture);
   const first = changes[0];
-  if (!first) return "load";
+  if (!first) return { trigger: "load", confidence: 0.5, eventMs: 0 };
 
-  let trigger: TriggerType | null = null;
+  let match: { trigger: TriggerType; timestamp: number } | null = null;
   for (const event of capture.events) {
     if (event.timestamp > first.startMs) break;
-    trigger = EVENT_TO_TRIGGER[event.type] ?? trigger;
+    const trigger = EVENT_TO_TRIGGER[event.type];
+    if (trigger) match = { trigger, timestamp: event.timestamp };
   }
 
-  return trigger ?? "load";
+  if (!match) return { trigger: "load", confidence: 0.6, eventMs: 0 };
+
+  const gap = first.startMs - match.timestamp;
+  const confidence = gap <= 300 ? 0.9 : gap <= 1000 ? 0.7 : 0.5;
+  return { trigger: match.trigger, confidence, eventMs: match.timestamp };
+}
+
+/** Backwards-compatible helper: just the trigger type. */
+export function detectTrigger(capture: RawCapture): TriggerType {
+  return classifyTrigger(capture).trigger;
 }

@@ -29,17 +29,17 @@ describe("diffCapture", () => {
       }),
     );
 
-    expect(result).toEqual([
-      {
-        selector: "div > .card",
-        property: "opacity",
-        from: "0",
-        to: "1",
-        startMs: 120,
-        endMs: 300,
-        durationMs: 180,
-      },
-    ]);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      selector: "div > .card",
+      property: "opacity",
+      from: "0",
+      to: "1",
+      startMs: 120,
+      endMs: 300,
+      durationMs: 180,
+    });
+    expect(result[0]?.samples.map((sample) => sample.value)).toEqual(["0", "0.4", "1"]);
   });
 
   it("ignores properties that never change and values that revert to baseline", () => {
