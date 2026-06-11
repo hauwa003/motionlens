@@ -190,6 +190,20 @@ chrome.runtime.onMessage.addListener(
   },
 );
 
+// Keyboard shortcut: toggle analysis on the focused tab (Alt+Shift+M).
+chrome.commands.onCommand.addListener((command) => {
+  if (command !== "toggle-analysis") return;
+  void (async () => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) return;
+    const state = await getTabState(tab.id);
+    await handleMessage(
+      { type: state.active ? MESSAGE_TYPES.DEACTIVATE : MESSAGE_TYPES.ACTIVATE, tabId: tab.id },
+      {},
+    );
+  })();
+});
+
 // Drop state for closed tabs.
 chrome.tabs.onRemoved.addListener((tabId) => {
   chrome.storage.session

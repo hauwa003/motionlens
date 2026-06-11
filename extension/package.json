@@ -37,6 +37,14 @@
     ],
     "side_panel": {
       "default_path": "sidepanel.html"
+    },
+    "commands": {
+      "toggle-analysis": {
+        "suggested_key": {
+          "default": "Alt+Shift+M"
+        },
+        "description": "Toggle MotionLens on the current tab"
+      }
     }
   }
 }

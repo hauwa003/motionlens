@@ -1,7 +1,10 @@
 import { buildMotionGraph, type FrameworkScore, type RawCapture } from "@motionlens/analysis";
 import { useEffect, useMemo, useState } from "react";
 
+import { deleteAnalysis, listAnalyses, saveAnalysis, type SavedAnalysis } from "~lib/history";
+
 import { MotionBreakdown } from "./breakdown";
+import { HistoryList } from "./history";
 import { PromptPanel } from "./prompts";
 import {
   clearOriginal,
@@ -72,10 +75,12 @@ function CaptureReport({
   capture,
   frameworks,
   onSaveOriginal,
+  onSaveToHistory,
 }: {
   capture: RawCapture;
   frameworks: FrameworkScore[];
   onSaveOriginal: () => void;
+  onSaveToHistory: () => void;
 }) {
   const graph = useMemo(() => buildMotionGraph(capture), [capture]);
 
@@ -95,14 +100,24 @@ function CaptureReport({
         <h2 className="text-xs font-medium text-zinc-300">Last capture</h2>
         <div className="flex gap-3">
           {graph.nodes.length > 0 && (
-            <button
-              type="button"
-              onClick={onSaveOriginal}
-              className="text-[11px] text-zinc-500 transition-colors hover:text-zinc-200"
-              title="Save this capture as the original to validate a recreation against"
-            >
-              Save as original
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={onSaveToHistory}
+                className="text-[11px] text-zinc-500 transition-colors hover:text-zinc-200"
+                title="Save this analysis to history"
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                onClick={onSaveOriginal}
+                className="text-[11px] text-zinc-500 transition-colors hover:text-zinc-200"
+                title="Save this capture as the original to validate a recreation against"
+              >
+                Save as original
+              </button>
+            </>
           )}
           <button
             type="button"
@@ -160,13 +175,21 @@ function IndexSidePanel() {
   const [capture, setCapture] = useState<RawCapture | null>(null);
   const [frameworks, setFrameworks] = useState<FrameworkScore[]>([]);
   const [original, setOriginal] = useState<SavedOriginal | null>(null);
+  const [history, setHistory] = useState<SavedAnalysis[]>([]);
+  const [viewing, setViewing] = useState<SavedAnalysis | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const recreationGraph = useMemo(() => (capture ? buildMotionGraph(capture) : null), [capture]);
 
   useEffect(() => {
     void loadOriginal().then(setOriginal);
+    void listAnalyses().then(setHistory);
   }, []);
+
+  const handleSaveToHistory = () => {
+    if (!recreationGraph || recreationGraph.nodes.length === 0) return;
+    void saveAnalysis(recreationGraph, frameworks).then(setHistory);
+  };
 
   const handleSaveOriginal = () => {
     if (!recreationGraph) return;
@@ -232,7 +255,22 @@ function IndexSidePanel() {
       </header>
 
       <main className="flex flex-1 flex-col overflow-y-auto p-4">
-        {selection.length > 0 || capture ? (
+        {viewing ? (
+          <div>
+            <button
+              type="button"
+              onClick={() => setViewing(null)}
+              className="mb-3 text-[11px] text-zinc-500 transition-colors hover:text-zinc-200"
+            >
+              ← Back
+            </button>
+            <p className="mb-2 truncate text-xs text-zinc-400" title={viewing.sourceUrl}>
+              {viewing.sourceUrl}
+            </p>
+            <MotionBreakdown graph={viewing.graph} frameworks={viewing.frameworks} />
+            <PromptPanel graph={viewing.graph} />
+          </div>
+        ) : selection.length > 0 || capture ? (
           <>
             {selection.length > 0 && (
               <>
@@ -287,6 +325,7 @@ function IndexSidePanel() {
                 capture={capture}
                 frameworks={frameworks}
                 onSaveOriginal={handleSaveOriginal}
+                onSaveToHistory={handleSaveToHistory}
               />
             )}
 
@@ -315,9 +354,28 @@ function IndexSidePanel() {
                   Activate MotionLens from the toolbar popup, then select an element to capture its
                   motion.
                 </p>
+                <ol className="mt-3 max-w-xs list-inside list-decimal space-y-1 rounded-md border border-zinc-800 bg-zinc-900/40 p-3 text-left text-[11px] text-zinc-500">
+                  <li>
+                    Activate with the toolbar popup or{" "}
+                    <kbd className="rounded bg-zinc-800 px-1 font-mono text-[10px]">
+                      Alt+Shift+M
+                    </kbd>
+                  </li>
+                  <li>Hover and click to select the animated element(s)</li>
+                  <li>Record, then trigger the interaction on the page</li>
+                  <li>Copy the generated prompt into your AI tool</li>
+                </ol>
               </>
             )}
           </div>
+        )}
+
+        {!viewing && (
+          <HistoryList
+            entries={history}
+            onOpen={setViewing}
+            onDelete={(entry) => void deleteAnalysis(entry.id).then(setHistory)}
+          />
         )}
       </main>
 
