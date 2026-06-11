@@ -2,6 +2,7 @@ import { buildMotionGraph, type FrameworkScore, type RawCapture } from "@motionl
 import { useEffect, useMemo, useState } from "react";
 
 import { MotionBreakdown } from "./breakdown";
+import { PromptPanel } from "./prompts";
 
 import {
   getActiveTab,
@@ -119,6 +120,8 @@ function CaptureReport({
               ))}
             </ol>
           </details>
+
+          <PromptPanel graph={graph} />
         </div>
       ) : (
         <p className="mt-3 text-xs text-zinc-500">
