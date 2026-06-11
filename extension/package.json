@@ -1,0 +1,42 @@
+{
+  "name": "motionlens-extension",
+  "displayName": "MotionLens",
+  "version": "0.1.0",
+  "private": true,
+  "description": "See it. Decode it. Recreate it. Reverse-engineer website animations into AI-ready implementation instructions.",
+  "scripts": {
+    "dev": "plasmo dev",
+    "build": "plasmo build",
+    "package": "plasmo package",
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@motionlens/analysis": "*",
+    "@motionlens/motion-graph": "*",
+    "@motionlens/prompts": "*",
+    "@motionlens/validation": "*",
+    "plasmo": "^0.90.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.270",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "autoprefixer": "^10.4.0",
+    "postcss": "^8.4.0",
+    "tailwindcss": "^3.4.0"
+  },
+  "manifest": {
+    "permissions": [
+      "activeTab",
+      "scripting",
+      "storage",
+      "sidePanel"
+    ],
+    "side_panel": {
+      "default_path": "sidepanel.html"
+    }
+  }
+}

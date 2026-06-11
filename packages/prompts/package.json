@@ -1,0 +1,27 @@
+{
+  "name": "@motionlens/prompts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Prompt generation — turns a MotionGraph into platform-specific AI implementation prompts.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@motionlens/motion-graph": "*"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0"
+  }
+}
