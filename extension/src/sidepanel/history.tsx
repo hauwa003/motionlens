@@ -1,12 +1,20 @@
 import { generatePrompt } from "@motionlens/prompts";
+import clsx from "clsx";
+import {
+  Check,
+  Clock,
+  Copy,
+  Globe,
+  Layers,
+  Search,
+  Tag,
+  Trash2,
+  Zap,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { Button, Card, EmptyState, IconButton, Input, Pill, SectionHeader } from "~components/ui";
 import { matchesQuery, type SavedAnalysis } from "~lib/history";
-
-/**
- * Motion library UI (Phases 16 + 20) — saved analyses with search, tags,
- * reopen/delete, and batch prompt export.
- */
 
 function hostnameOf(url: string): string {
   try {
@@ -15,6 +23,8 @@ function hostnameOf(url: string): string {
     return url;
   }
 }
+
+/* ─── Tag Editor ─── */
 
 function TagEditor({
   entry,
@@ -36,7 +46,7 @@ function TagEditor({
   };
 
   return (
-    <div className="mt-1 flex flex-wrap items-center gap-1">
+    <div className="mt-1.5 flex flex-wrap items-center gap-1">
       {entry.tags.map((tag) => (
         <button
           key={tag}
@@ -48,9 +58,13 @@ function TagEditor({
               entry.tags.filter((candidate) => candidate !== tag),
             )
           }
-          className="rounded-full bg-zinc-800 px-1.5 py-0.5 text-[9px] text-zinc-300 hover:bg-zinc-700"
+          className="group/tag"
         >
-          {tag} ✕
+          <Pill variant="violet" className="hover:border-accent-red-border transition-colors">
+            <Tag size={10} />
+            {tag}
+            <span className="text-text-disabled group-hover/tag:text-accent-red transition-colors">×</span>
+          </Pill>
         </button>
       ))}
       {adding ? (
@@ -66,14 +80,14 @@ function TagEditor({
               setAdding(false);
             }
           }}
-          className="w-20 rounded border border-zinc-700 bg-zinc-900 px-1 py-0.5 text-[9px] text-zinc-200 outline-none"
+          className="h-6 w-20 rounded-md border border-accent-violet-border bg-surface-raised px-1.5 text-xs-meta text-text-primary outline-none"
           placeholder="tag name"
         />
       ) : (
         <button
           type="button"
           onClick={() => setAdding(true)}
-          className="text-[9px] text-zinc-600 hover:text-zinc-300"
+          className="text-xs-meta text-text-disabled hover:text-accent-violet transition-colors"
         >
           + tag
         </button>
@@ -81,6 +95,8 @@ function TagEditor({
     </div>
   );
 }
+
+/* ─── History List (main export) ─── */
 
 export function HistoryList({
   entries,
@@ -101,7 +117,15 @@ export function HistoryList({
     [entries, query],
   );
 
-  if (entries.length === 0) return null;
+  if (entries.length === 0) {
+    return (
+      <EmptyState
+        icon={BookOpen}
+        title="No saved analyses"
+        description="Capture and save an animation to see it here."
+      />
+    );
+  }
 
   const copyAllPrompts = async () => {
     const text = filtered
@@ -113,63 +137,85 @@ export function HistoryList({
   };
 
   return (
-    <section className="mt-4 border-t border-zinc-900 pt-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xs font-medium text-zinc-300">Library</h2>
-        {filtered.length > 0 && (
-          <button
-            type="button"
-            onClick={() => void copyAllPrompts()}
-            className="text-[11px] text-zinc-500 transition-colors hover:text-zinc-200"
-            title="Copy Claude prompts for every analysis shown below"
-          >
-            {copied ? "Copied ✓" : `Copy prompts (${filtered.length})`}
-          </button>
-        )}
-      </div>
-
-      <input
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-        placeholder="Search site, trigger, motion, tag…"
-        className="mt-2 w-full rounded-md border border-zinc-800 bg-zinc-900/60 px-2 py-1.5 text-[11px] text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-zinc-600"
+    <div>
+      <SectionHeader
+        title="Library"
+        icon={BookOpen}
+        action={
+          filtered.length > 0 ? (
+            <Button
+              variant="secondary"
+              icon={copied ? Check : Copy}
+              onClick={() => void copyAllPrompts()}
+              className={clsx("h-7 px-2 text-xs-meta", copied && "text-accent-emerald")}
+            >
+              {copied ? "Copied!" : `Copy prompts (${filtered.length})`}
+            </Button>
+          ) : undefined
+        }
       />
 
-      <ul className="mt-2 flex flex-col gap-1.5">
+      <div className="mt-3">
+        <Input
+          icon={Search}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search site, trigger, motion, tag..."
+        />
+      </div>
+
+      <ul className="mt-3 flex flex-col gap-2">
         {filtered.map((entry) => (
-          <li
-            key={entry.id}
-            className="group rounded-md border border-zinc-800 bg-zinc-900/60 px-3 py-2 transition-colors hover:border-zinc-700"
-          >
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => onOpen(entry)}
-                className="min-w-0 flex-1 text-left"
-              >
-                <p className="truncate text-[11px] text-zinc-200">{hostnameOf(entry.sourceUrl)}</p>
-                <p className="font-mono text-[9px] text-zinc-500">
-                  {new Date(entry.savedAt).toLocaleString()} · on {entry.graph.trigger} ·{" "}
-                  {entry.graph.nodes.length} element{entry.graph.nodes.length === 1 ? "" : "s"} ·{" "}
-                  {entry.graph.durationMs}ms
-                </p>
-              </button>
-              <button
-                type="button"
-                onClick={() => onDelete(entry)}
-                className="text-[10px] text-zinc-600 opacity-0 transition-opacity hover:text-red-300 group-hover:opacity-100"
-                title="Delete"
-              >
-                ✕
-              </button>
-            </div>
-            <TagEditor entry={entry} onUpdateTags={onUpdateTags} />
+          <li key={entry.id}>
+            <Card interactive className="group">
+              <div className="flex items-start gap-2">
+                <button
+                  type="button"
+                  onClick={() => onOpen(entry)}
+                  className="min-w-0 flex-1 text-left"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <Globe size={12} className="shrink-0 text-text-tertiary" />
+                    <span className="truncate text-sm font-medium text-text-primary">
+                      {hostnameOf(entry.sourceUrl)}
+                    </span>
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs-meta text-text-tertiary">
+                    <span className="flex items-center gap-1">
+                      <Clock size={10} />
+                      {new Date(entry.savedAt).toLocaleDateString()}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Zap size={10} />
+                      {entry.graph.trigger}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Layers size={10} />
+                      {entry.graph.nodes.length} element{entry.graph.nodes.length === 1 ? "" : "s"}
+                    </span>
+                    <span className="font-mono">{entry.graph.durationMs}ms</span>
+                  </div>
+                </button>
+                <IconButton
+                  icon={Trash2}
+                  label="Delete"
+                  className="opacity-0 group-hover:opacity-100 transition-opacity text-text-disabled hover:text-accent-red"
+                  onClick={() => onDelete(entry)}
+                />
+              </div>
+              <TagEditor entry={entry} onUpdateTags={onUpdateTags} />
+            </Card>
           </li>
         ))}
         {filtered.length === 0 && (
-          <li className="py-2 text-center text-[11px] text-zinc-600">No matches for “{query}”</li>
+          <li className="py-4 text-center text-xs text-text-disabled">
+            No matches for "{query}"
+          </li>
         )}
       </ul>
-    </section>
+    </div>
   );
 }
+
+// Re-export BookOpen for the empty state fallback in index
+import { BookOpen } from "lucide-react";

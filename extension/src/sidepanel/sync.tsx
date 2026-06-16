@@ -1,12 +1,15 @@
+import clsx from "clsx";
+import {
+  Cloud,
+  Download,
+  Eye,
+  EyeOff,
+  Upload,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { Button, Card, ErrorCard, Input, LoadingSpinner, SectionHeader } from "~components/ui";
 import { listAnalyses, type SavedAnalysis } from "~lib/history";
-
-/**
- * Cloud sync (Phase 17) — pushes/pulls the local library through the web
- * app's /api/analyses endpoint, authenticated with a Supabase access token
- * copied from the dashboard.
- */
 
 const SETTINGS_KEY = "sync-settings";
 const DEFAULT_BASE_URL = "http://localhost:3000";
@@ -41,9 +44,11 @@ export function SyncPanel({
     baseUrl: DEFAULT_BASE_URL,
     token: "",
   });
-  const [open, setOpen] = useState(false);
+  const [showToken, setShowToken] = useState(false);
   const [busy, setBusy] = useState<"push" | "pull" | null>(null);
-  const [status, setStatus] = useState<string | null>(null);
+  const [status, setStatus] = useState<{ type: "success" | "error"; message: string } | null>(
+    null,
+  );
 
   useEffect(() => {
     void loadSettings().then(setSettings);
@@ -62,7 +67,7 @@ export function SyncPanel({
     try {
       const entries = await listAnalyses();
       if (entries.length === 0) {
-        setStatus("Nothing to push — the library is empty.");
+        setStatus({ type: "error", message: "Nothing to push — the library is empty." });
         return;
       }
       const response = await fetch(endpoint, {
@@ -85,11 +90,11 @@ export function SyncPanel({
       const body = (await response.json()) as { error?: string; count?: number };
       setStatus(
         response.ok
-          ? `Pushed ${body.count ?? entries.length} analyses ✓`
-          : `Push failed: ${body.error}`,
+          ? { type: "success", message: `Pushed ${body.count ?? entries.length} analyses` }
+          : { type: "error", message: `Push failed: ${body.error}` },
       );
     } catch (error) {
-      setStatus(`Push failed: ${String(error)}`);
+      setStatus({ type: "error", message: `Push failed: ${String(error)}` });
     } finally {
       setBusy(null);
     }
@@ -104,7 +109,7 @@ export function SyncPanel({
       });
       const body = (await response.json()) as { error?: string; analyses?: RemoteAnalysis[] };
       if (!response.ok) {
-        setStatus(`Pull failed: ${body.error}`);
+        setStatus({ type: "error", message: `Pull failed: ${body.error}` });
         return;
       }
 
@@ -123,9 +128,9 @@ export function SyncPanel({
       const merged = Array.from(byId.values()).sort((a, b) => b.savedAt.localeCompare(a.savedAt));
       await chrome.storage.local.set({ "analysis-history": merged });
       onHistoryChanged(merged);
-      setStatus(`Pulled — library now has ${merged.length} analyses ✓`);
+      setStatus({ type: "success", message: `Library now has ${merged.length} analyses` });
     } catch (error) {
-      setStatus(`Pull failed: ${String(error)}`);
+      setStatus({ type: "error", message: `Pull failed: ${String(error)}` });
     } finally {
       setBusy(null);
     }
@@ -134,52 +139,84 @@ export function SyncPanel({
   const ready = settings.token.trim().length > 0 && settings.baseUrl.trim().length > 0;
 
   return (
-    <section className="mt-4 border-t border-zinc-900 pt-4">
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        className="flex w-full items-center justify-between text-xs font-medium text-zinc-300"
-      >
-        Sync
-        <span className="text-zinc-600">{open ? "▾" : "▸"}</span>
-      </button>
+    <div>
+      <SectionHeader title="Cloud Sync" icon={Cloud} />
 
-      {open && (
-        <div className="mt-2 flex flex-col gap-2">
-          <input
-            value={settings.baseUrl}
-            onChange={(event) => persist({ ...settings, baseUrl: event.target.value })}
-            placeholder="Web app URL"
-            className="rounded-md border border-zinc-800 bg-zinc-900/60 px-2 py-1.5 text-[11px] text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-zinc-600"
-          />
-          <input
-            value={settings.token}
-            onChange={(event) => persist({ ...settings, token: event.target.value })}
-            placeholder="Sync token (dashboard → Copy sync token)"
-            type="password"
-            className="rounded-md border border-zinc-800 bg-zinc-900/60 px-2 py-1.5 text-[11px] text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-zinc-600"
-          />
-          <div className="flex gap-2">
+      <div className="mt-4 flex flex-col gap-3">
+        <Input
+          id="sync-url"
+          label="Server URL"
+          value={settings.baseUrl}
+          onChange={(event) => persist({ ...settings, baseUrl: event.target.value })}
+          placeholder="https://your-motionlens-app.vercel.app"
+        />
+
+        <div>
+          <label htmlFor="sync-token" className="mb-1 block text-xs-meta font-medium text-text-secondary">
+            Sync token
+          </label>
+          <div className="relative">
+            <input
+              id="sync-token"
+              value={settings.token}
+              onChange={(event) => persist({ ...settings, token: event.target.value })}
+              placeholder="Paste from dashboard"
+              type={showToken ? "text" : "password"}
+              className="h-9 w-full rounded-lg border border-surface-border bg-surface-raised px-3 pr-9 text-xs text-text-primary placeholder:text-text-disabled outline-none transition-colors focus:border-accent-violet-border"
+            />
             <button
               type="button"
-              disabled={!ready || busy !== null}
-              onClick={() => void push()}
-              className="flex-1 rounded-md bg-zinc-100 px-2 py-1.5 text-[11px] font-medium text-zinc-950 transition-colors hover:bg-white disabled:opacity-50"
+              onClick={() => setShowToken(!showToken)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-secondary transition-colors"
+              aria-label={showToken ? "Hide token" : "Show token"}
             >
-              {busy === "push" ? "Pushing…" : "Push library"}
-            </button>
-            <button
-              type="button"
-              disabled={!ready || busy !== null}
-              onClick={() => void pull()}
-              className="flex-1 rounded-md bg-zinc-800 px-2 py-1.5 text-[11px] font-medium text-zinc-200 transition-colors hover:bg-zinc-700 disabled:opacity-50"
-            >
-              {busy === "pull" ? "Pulling…" : "Pull from cloud"}
+              {showToken ? <EyeOff size={14} /> : <Eye size={14} />}
             </button>
           </div>
-          {status && <p className="text-[10px] text-zinc-500">{status}</p>}
         </div>
-      )}
-    </section>
+
+        <div className="flex gap-2">
+          <Button
+            variant="primary"
+            icon={busy === "push" ? undefined : Upload}
+            loading={busy === "push"}
+            disabled={!ready || busy !== null}
+            onClick={() => void push()}
+            className="flex-1"
+          >
+            {busy === "push" ? "Pushing..." : "Push"}
+          </Button>
+          <Button
+            variant="secondary"
+            icon={busy === "pull" ? undefined : Download}
+            loading={busy === "pull"}
+            disabled={!ready || busy !== null}
+            onClick={() => void pull()}
+            className="flex-1"
+          >
+            {busy === "pull" ? "Pulling..." : "Pull"}
+          </Button>
+        </div>
+
+        {status && (
+          <Card
+            variant={status.type === "error" ? "error" : "default"}
+            className={clsx(
+              "animate-slide-up",
+              status.type === "success" && "border-accent-emerald-border bg-accent-emerald-muted",
+            )}
+          >
+            <p
+              className={clsx(
+                "text-xs",
+                status.type === "success" ? "text-emerald-300" : "text-red-200",
+              )}
+            >
+              {status.message}
+            </p>
+          </Card>
+        )}
+      </div>
+    </div>
   );
 }

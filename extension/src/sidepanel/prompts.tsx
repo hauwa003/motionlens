@@ -1,11 +1,10 @@
 import { generatePrompt, TARGET_PLATFORMS, type TargetPlatform } from "@motionlens/prompts";
 import type { MotionGraph } from "@motionlens/motion-graph";
+import clsx from "clsx";
+import { Check, ChevronDown, Copy } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-/**
- * Prompt UI (Phase 12) — platform selector, editable prompt preview,
- * quality indicator, one-click copy.
- */
+import { Button, Card, Pill, ProgressBar, SectionHeader } from "~components/ui";
 
 const PLATFORM_LABELS: Record<TargetPlatform, string> = {
   claude: "Claude",
@@ -20,10 +19,10 @@ export function PromptPanel({ graph }: { graph: MotionGraph }) {
   const [platform, setPlatform] = useState<TargetPlatform>("claude");
   const [text, setText] = useState("");
   const [copied, setCopied] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
 
   const generated = useMemo(() => generatePrompt(graph, platform), [graph, platform]);
 
-  // Re-seed the editable text whenever the source prompt changes.
   useEffect(() => setText(generated.text), [generated.text]);
 
   if (graph.nodes.length === 0) return null;
@@ -36,61 +35,94 @@ export function PromptPanel({ graph }: { graph: MotionGraph }) {
 
   const quality = generated.quality;
   const qualityColor =
-    quality.score >= 80
-      ? "text-emerald-300"
-      : quality.score >= 50
-        ? "text-amber-300"
-        : "text-red-300";
+    quality.score >= 80 ? "emerald" : quality.score >= 50 ? "amber" : "red";
 
   return (
-    <section className="mt-4 border-t border-zinc-900 pt-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xs font-medium text-zinc-300">Implementation prompt</h2>
-        <span className={`font-mono text-[10px] ${qualityColor}`} title={quality.notes.join("\n")}>
-          quality {quality.score}/100
-        </span>
+    <section className="mt-4 border-t border-surface-border pt-4">
+      <SectionHeader
+        title="Implementation prompt"
+        action={
+          <div className="flex items-center gap-2">
+            <ProgressBar
+              value={quality.score}
+              max={100}
+              color={qualityColor}
+              className="w-16"
+            />
+            <span className={clsx("font-mono text-xs-meta", `text-accent-${qualityColor}`)}>
+              {quality.score}
+            </span>
+          </div>
+        }
+      />
+
+      {/* Platform selector */}
+      <div className="mt-3 flex flex-wrap gap-1">
+        {TARGET_PLATFORMS.map((candidate) => {
+          const active = candidate === platform;
+          return (
+            <button
+              key={candidate}
+              type="button"
+              onClick={() => setPlatform(candidate)}
+              className={clsx(
+                "h-8 rounded-lg px-3 text-xs font-medium transition-colors",
+                active
+                  ? "bg-accent-violet text-white shadow-glow-violet/30"
+                  : "bg-surface-raised text-text-secondary border border-surface-border hover:border-accent-violet-border hover:text-text-primary",
+              )}
+            >
+              {PLATFORM_LABELS[candidate]}
+            </button>
+          );
+        })}
       </div>
 
-      <div className="mt-2 flex flex-wrap gap-1">
-        {TARGET_PLATFORMS.map((candidate) => (
+      {/* Quality notes (collapsible) */}
+      {quality.notes.length > 0 && quality.score < 100 && (
+        <div className="mt-2">
           <button
-            key={candidate}
             type="button"
-            onClick={() => setPlatform(candidate)}
-            className={`rounded-md px-2 py-1 text-[11px] transition-colors ${
-              candidate === platform
-                ? "bg-zinc-100 font-medium text-zinc-950"
-                : "bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
-            }`}
+            onClick={() => setNotesOpen(!notesOpen)}
+            className="flex items-center gap-1 text-xs-meta text-text-tertiary hover:text-text-secondary transition-colors"
           >
-            {PLATFORM_LABELS[candidate]}
+            <ChevronDown
+              size={12}
+              className={clsx("transition-transform", notesOpen && "rotate-180")}
+            />
+            {quality.notes.length} note{quality.notes.length === 1 ? "" : "s"}
           </button>
-        ))}
-      </div>
+          {notesOpen && (
+            <ul className="mt-1 list-inside list-disc text-xs text-text-secondary space-y-0.5">
+              {quality.notes.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
+      {/* Editable prompt */}
       <textarea
         value={text}
         onChange={(event) => setText(event.target.value)}
         spellCheck={false}
         rows={12}
-        className="mt-2 w-full resize-y rounded-md border border-zinc-800 bg-zinc-900/60 p-3 font-mono text-[10px] leading-relaxed text-zinc-300 outline-none focus:border-zinc-600"
+        className="mt-3 w-full resize-y rounded-lg border border-surface-border bg-surface-raised p-3 font-mono text-xs leading-relaxed text-text-secondary outline-none transition-colors focus:border-accent-violet-border"
       />
 
-      {quality.notes.length > 0 && quality.score < 100 && (
-        <ul className="mt-1 list-inside list-disc text-[10px] text-zinc-500">
-          {quality.notes.map((note) => (
-            <li key={note}>{note}</li>
-          ))}
-        </ul>
-      )}
-
-      <button
-        type="button"
+      {/* Copy button */}
+      <Button
+        variant="primary"
+        icon={copied ? Check : Copy}
         onClick={() => void copy()}
-        className="mt-2 w-full rounded-md bg-zinc-100 px-3 py-2 text-xs font-medium text-zinc-950 transition-colors hover:bg-white"
+        className={clsx(
+          "mt-2 w-full transition-all",
+          copied && "bg-accent-emerald hover:bg-emerald-400 shadow-glow-emerald/30",
+        )}
       >
-        {copied ? "Copied ✓" : `Copy ${PLATFORM_LABELS[platform]} prompt`}
-      </button>
+        {copied ? "Copied!" : `Copy ${PLATFORM_LABELS[platform]} prompt`}
+      </Button>
     </section>
   );
 }

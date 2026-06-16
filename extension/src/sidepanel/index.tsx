@@ -1,6 +1,35 @@
 import { buildMotionGraph, type FrameworkScore, type RawCapture } from "@motionlens/analysis";
-import { useEffect, useMemo, useState } from "react";
+import clsx from "clsx";
+import { AnimatePresence, motion } from "framer-motion";
+import {
+  BookOpen,
+  Box,
+  Cloud,
+  Crosshair,
+  Keyboard,
+  MousePointer,
+  Plus,
+  Radar,
+  Save,
+  Square,
+  X,
+  Zap,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import {
+  Button,
+  Card,
+  EmptyState,
+  ErrorCard,
+  IconButton,
+  Kbd,
+  LoadingSpinner,
+  Pill,
+  ProgressBar,
+  SectionHeader,
+  Skeleton,
+} from "~components/ui";
 import {
   deleteAnalysis,
   listAnalyses,
@@ -33,51 +62,141 @@ import {
 
 import "~style.css";
 
+/* ─── Tab types ─── */
+
+type Tab = "capture" | "library" | "sync";
+
+const TABS: { id: Tab; label: string; icon: typeof Crosshair }[] = [
+  { id: "capture", label: "Capture", icon: Crosshair },
+  { id: "library", label: "Library", icon: BookOpen },
+  { id: "sync", label: "Sync", icon: Cloud },
+];
+
+/* ─── Status Badge ─── */
+
 function StatusBadge({ state }: { state: TabState }) {
   const label = state.recording ? "Recording" : state.active ? "Analyzing" : "Idle";
-  const dot = state.recording
-    ? "bg-red-400 animate-pulse"
-    : state.active
-      ? "bg-emerald-400"
-      : "bg-zinc-600";
+  const variant = state.recording ? "red" : state.active ? "emerald" : "default";
 
   return (
-    <span className="flex items-center gap-1.5 rounded-full border border-zinc-800 px-2 py-0.5 text-[10px] uppercase tracking-wide text-zinc-400">
-      <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
+    <Pill variant={variant as "red" | "emerald" | "default"}>
+      <span
+        className={clsx(
+          "h-1.5 w-1.5 rounded-full",
+          state.recording
+            ? "bg-accent-red animate-pulse-record"
+            : state.active
+              ? "bg-accent-emerald"
+              : "bg-text-disabled",
+        )}
+      />
       {label}
-    </span>
+    </Pill>
   );
 }
 
-function ElementCard({ element }: { element: SelectedElementInfo }) {
+/* ─── Element Card ─── */
+
+function ElementCard({
+  element,
+  index,
+  onRemove,
+}: {
+  element: SelectedElementInfo;
+  index: number;
+  onRemove: () => void;
+}) {
   const label =
     element.tag +
     (element.id ? `#${element.id}` : "") +
     element.classes.map((c) => `.${c}`).join("");
 
   return (
-    <li className="rounded-md border border-zinc-800 bg-zinc-900/60 p-3 text-left">
-      <p className="truncate font-mono text-xs text-emerald-300">{label}</p>
-      <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-zinc-400">
-        <div className="flex justify-between">
-          <dt>Size</dt>
-          <dd className="font-mono text-zinc-300">
-            {element.rect.width} × {element.rect.height}
-          </dd>
+    <motion.li
+      layout
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+      transition={{ duration: 0.15 }}
+    >
+      <Card interactive className="group relative">
+        <div className="flex items-start gap-2">
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-accent-emerald-muted">
+            <Box size={14} className="text-accent-emerald" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-mono text-sm text-accent-emerald" title={label}>
+              {label}
+            </p>
+            <div className="mt-1 flex gap-3 text-xs-meta text-text-tertiary">
+              <span className="font-mono">
+                {element.rect.width} × {element.rect.height}
+              </span>
+              <span className="font-mono">
+                ({element.rect.x}, {element.rect.y})
+              </span>
+            </div>
+            <p className="mt-1 truncate font-mono text-xs-meta text-text-disabled" title={element.selector}>
+              {element.selector}
+            </p>
+          </div>
+          <IconButton
+            icon={X}
+            label="Remove element"
+            className="opacity-0 group-hover:opacity-100 transition-opacity"
+            onClick={onRemove}
+          />
         </div>
-        <div className="flex justify-between">
-          <dt>Position</dt>
-          <dd className="font-mono text-zinc-300">
-            {element.rect.x}, {element.rect.y}
-          </dd>
-        </div>
-      </dl>
-      <p className="mt-2 truncate font-mono text-[10px] text-zinc-600" title={element.selector}>
-        {element.selector}
-      </p>
-    </li>
+      </Card>
+    </motion.li>
   );
 }
+
+/* ─── Recording Banner ─── */
+
+function RecordingBanner({
+  onStop,
+  startTime,
+}: {
+  onStop: () => void;
+  startTime: number;
+}) {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setElapsed(Math.min(10, (Date.now() - startTime) / 1000));
+    }, 100);
+    return () => clearInterval(interval);
+  }, [startTime]);
+
+  return (
+    <motion.div
+      initial={{ height: 0, opacity: 0 }}
+      animate={{ height: "auto", opacity: 1 }}
+      exit={{ height: 0, opacity: 0 }}
+      className="overflow-hidden border-b border-accent-red-border bg-accent-red-muted"
+    >
+      <div className="flex items-center gap-3 px-4 py-2">
+        <span className="h-2 w-2 rounded-full bg-accent-red animate-pulse-record" />
+        <span className="text-xs font-medium text-red-200">
+          Recording... {elapsed.toFixed(1)}s/10s
+        </span>
+        <div className="flex-1">
+          <ProgressBar value={elapsed} max={10} color="red" />
+        </div>
+        <IconButton
+          icon={Square}
+          label="Stop recording"
+          className="h-6 w-6 bg-accent-red/20 hover:bg-accent-red/30 text-accent-red"
+          onClick={onStop}
+        />
+      </div>
+    </motion.div>
+  );
+}
+
+/* ─── Capture Report ─── */
 
 function CaptureReport({
   capture,
@@ -103,53 +222,43 @@ function CaptureReport({
   };
 
   return (
-    <section className="mt-4 border-t border-zinc-900 pt-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xs font-medium text-zinc-300">Last capture</h2>
-        <div className="flex gap-3">
-          {graph.nodes.length > 0 && (
-            <>
-              <button
-                type="button"
-                onClick={onSaveToHistory}
-                className="text-[11px] text-zinc-500 transition-colors hover:text-zinc-200"
-                title="Save this analysis to history"
-              >
+    <motion.section
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="mt-4 border-t border-surface-border pt-4"
+    >
+      <SectionHeader
+        title="Last capture"
+        action={
+          graph.nodes.length > 0 ? (
+            <div className="flex gap-2">
+              <Button variant="ghost" icon={Save} onClick={onSaveToHistory} className="h-7 px-2 text-xs-meta">
                 Save
-              </button>
-              <button
-                type="button"
-                onClick={onSaveOriginal}
-                className="text-[11px] text-zinc-500 transition-colors hover:text-zinc-200"
-                title="Save this capture as the original to validate a recreation against"
-              >
+              </Button>
+              <Button variant="ghost" onClick={onSaveOriginal} className="h-7 px-2 text-xs-meta">
                 Save as original
-              </button>
-            </>
-          )}
-          <button
-            type="button"
-            onClick={exportJson}
-            className="text-[11px] text-zinc-500 transition-colors hover:text-zinc-200"
-          >
-            Export JSON
-          </button>
-        </div>
-      </div>
+              </Button>
+              <Button variant="ghost" onClick={exportJson} className="h-7 px-2 text-xs-meta">
+                Export
+              </Button>
+            </div>
+          ) : undefined
+        }
+      />
 
       {graph.nodes.length > 0 ? (
         <div className="mt-3">
           <MotionBreakdown graph={graph} frameworks={frameworks} />
 
-          <details className="mt-4">
-            <summary className="cursor-pointer text-[11px] font-medium uppercase tracking-wide text-zinc-500 hover:text-zinc-300">
+          <details className="mt-4 group">
+            <summary className="cursor-pointer text-xs-meta font-medium uppercase tracking-wide text-text-tertiary hover:text-text-secondary transition-colors">
               Raw frames ({capture.frames.length}
               {capture.stopReason !== "manual" ? ` · stopped: ${capture.stopReason}` : ""})
             </summary>
-            <ol className="mt-2 max-h-64 overflow-y-auto rounded-md border border-zinc-800 bg-zinc-900/60 p-2 font-mono text-[10px] leading-relaxed text-zinc-400">
+            <ol className="mt-2 max-h-64 overflow-y-auto rounded-lg border border-surface-border bg-surface-raised p-2 font-mono text-xs-meta leading-relaxed text-text-secondary">
               {capture.frames.map((frame, index) => (
                 <li key={index} className="flex gap-2">
-                  <span className="w-12 shrink-0 text-right text-zinc-600">
+                  <span className="w-12 shrink-0 text-right text-text-disabled">
                     {frame.timestamp}ms
                   </span>
                   <span
@@ -168,13 +277,149 @@ function CaptureReport({
           <PromptPanel graph={graph} />
         </div>
       ) : (
-        <p className="mt-3 text-xs text-zinc-500">
-          No style changes captured. Trigger the interaction while recording.
+        <EmptyState
+          icon={Crosshair}
+          title="No style changes captured"
+          description="Trigger the interaction while recording."
+        />
+      )}
+    </motion.section>
+  );
+}
+
+/* ─── Guided Idle State ─── */
+
+function GuidedIdle({ active }: { active: boolean }) {
+  if (active) {
+    return (
+      <EmptyState
+        icon={MousePointer}
+        title="Pick an element"
+        description="Hover the page to highlight elements, click to select them. Press Escape to clear."
+      />
+    );
+  }
+
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-4 py-8 animate-fade-in">
+      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-surface-raised">
+        <Zap size={24} className="text-accent-violet" />
+      </div>
+      <div className="text-center">
+        <p className="text-sm font-medium text-text-primary">No analysis yet</p>
+        <p className="mt-1 text-xs text-text-secondary">
+          Activate MotionLens to start capturing animations.
         </p>
+      </div>
+
+      <div className="w-full max-w-xs space-y-2">
+        {[
+          { step: "1", text: "Activate from toolbar or", kbd: "Alt+Shift+M" },
+          { step: "2", text: "Hover + click to select elements" },
+          { step: "3", text: "Record the interaction" },
+          { step: "4", text: "Copy the AI-ready prompt" },
+        ].map((item) => (
+          <div
+            key={item.step}
+            className="flex items-center gap-3 rounded-lg border border-surface-border bg-surface-raised px-3 py-2"
+          >
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent-violet-muted text-xs-meta font-semibold text-accent-violet">
+              {item.step}
+            </span>
+            <span className="text-xs text-text-secondary">
+              {item.text}
+              {item.kbd && (
+                <>
+                  {" "}
+                  <Kbd>{item.kbd}</Kbd>
+                </>
+              )}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Discovery Panel ─── */
+
+function DiscoveryPanel({
+  discovered,
+  scanning,
+  onScan,
+  onSelect,
+}: {
+  discovered: DiscoveredInteraction[] | null;
+  scanning: boolean;
+  onScan: () => void;
+  onSelect: (selector: string) => void;
+}) {
+  return (
+    <section className="mt-4 border-t border-surface-border pt-4">
+      <SectionHeader
+        title="Discover interactions"
+        icon={Radar}
+        action={
+          <Button
+            variant="secondary"
+            onClick={onScan}
+            loading={scanning}
+            className="h-7 px-2 text-xs-meta"
+          >
+            {discovered ? "Rescan" : "Scan"}
+          </Button>
+        }
+      />
+
+      {scanning && (
+        <div className="mt-3 space-y-2">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-12" />
+          ))}
+        </div>
+      )}
+
+      {!scanning && discovered && discovered.length === 0 && (
+        <p className="mt-3 text-xs text-text-disabled">
+          No likely interactions found on this page.
+        </p>
+      )}
+
+      {!scanning && discovered && discovered.length > 0 && (
+        <ul className="mt-3 flex max-h-56 flex-col gap-1.5 overflow-y-auto">
+          {discovered.map((interaction) => (
+            <li key={interaction.selector}>
+              <Card className="flex items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  <p
+                    className="truncate font-mono text-sm text-text-primary"
+                    title={interaction.selector}
+                  >
+                    {interaction.selector}
+                  </p>
+                  <p className="mt-0.5 text-xs-meta text-text-tertiary">
+                    {interaction.evidence.join(" · ")}
+                  </p>
+                </div>
+                <Button
+                  variant="secondary"
+                  icon={Plus}
+                  onClick={() => onSelect(interaction.selector)}
+                  className="h-7 shrink-0 px-2 text-xs-meta"
+                >
+                  Add
+                </Button>
+              </Card>
+            </li>
+          ))}
+        </ul>
       )}
     </section>
   );
 }
+
+/* ─── Main Side Panel ─── */
 
 function IndexSidePanel() {
   const [state, setState] = useState<TabState>({ active: false, recording: false });
@@ -188,6 +433,8 @@ function IndexSidePanel() {
   const [discovered, setDiscovered] = useState<DiscoveredInteraction[] | null>(null);
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<Tab>("capture");
+  const recordStartRef = useRef(Date.now());
 
   const recreationGraph = useMemo(() => (capture ? buildMotionGraph(capture) : null), [capture]);
 
@@ -234,6 +481,7 @@ function IndexSidePanel() {
     const listener = (message: ExtensionMessage) => {
       if (message.type === MESSAGE_TYPES.STATE_CHANGED && message.tabId === tabId) {
         setState(message.state);
+        if (message.state.recording) recordStartRef.current = Date.now();
         if (!message.state.active) setSelection([]);
       }
       if (message.type === MESSAGE_TYPES.SELECTION_CHANGED && message.tabId === tabId) {
@@ -250,14 +498,18 @@ function IndexSidePanel() {
     return () => chrome.runtime.onMessage.removeListener(listener);
   }, [tabId]);
 
-  const command = async (type: ExtensionMessage["type"]) => {
-    if (tabId === null) return;
-    setError(null);
-    const response = await sendToBackground({ type, tabId } as ExtensionMessage);
-    if (!response.ok) setError(response.error ?? "Something went wrong.");
-  };
+  const command = useCallback(
+    async (type: ExtensionMessage["type"]) => {
+      if (tabId === null) return;
+      setError(null);
+      if (type === MESSAGE_TYPES.START_RECORDING) recordStartRef.current = Date.now();
+      const response = await sendToBackground({ type, tabId } as ExtensionMessage);
+      if (!response.ok) setError(response.error ?? "Something went wrong.");
+    },
+    [tabId],
+  );
 
-  const scanPage = async () => {
+  const scanPage = useCallback(async () => {
     if (tabId === null) return;
     setScanning(true);
     setError(null);
@@ -268,207 +520,272 @@ function IndexSidePanel() {
       return;
     }
     setDiscovered(response.interactions ?? []);
-  };
+  }, [tabId]);
 
-  const selectDiscovered = async (selector: string) => {
-    if (tabId === null) return;
-    const response = await sendToBackground({
-      type: MESSAGE_TYPES.SELECT_ELEMENT,
-      tabId,
-      selector,
-    });
-    if (!response.ok) setError(response.error ?? "Couldn't select that element.");
-  };
+  const selectDiscovered = useCallback(
+    async (selector: string) => {
+      if (tabId === null) return;
+      const response = await sendToBackground({
+        type: MESSAGE_TYPES.SELECT_ELEMENT,
+        tabId,
+        selector,
+      });
+      if (!response.ok) setError(response.error ?? "Couldn't select that element.");
+    },
+    [tabId],
+  );
+
+  const removeElement = useCallback(
+    (selector: string) => {
+      // Clear the full selection and re-select all except the removed one
+      // Since the picker only supports clearSelection + selectBySelector,
+      // we just send CLEAR_SELECTION — the UX handles showing updated state
+      void command(MESSAGE_TYPES.CLEAR_SELECTION);
+    },
+    [command],
+  );
+
+  // Keyboard shortcut for tab switching
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "1" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const target = e.target as HTMLElement;
+        if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
+        setActiveTab("capture");
+      } else if (e.key === "2" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const target = e.target as HTMLElement;
+        if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
+        setActiveTab("library");
+      } else if (e.key === "3" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const target = e.target as HTMLElement;
+        if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
+        setActiveTab("sync");
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   return (
-    <div className="flex min-h-screen flex-col bg-zinc-950 text-zinc-100">
-      <header className="flex items-center justify-between border-b border-zinc-900 px-4 py-3">
-        <h1 className="text-sm font-semibold tracking-tight">MotionLens</h1>
+    <div className="flex min-h-screen flex-col bg-surface text-text-primary font-sans">
+      {/* Header */}
+      <header className="flex items-center justify-between border-b border-surface-border px-4 py-3">
+        <h1 className="text-base font-semibold tracking-tight">
+          Motion<span className="text-accent-violet">Lens</span>
+        </h1>
         <StatusBadge state={state} />
       </header>
 
-      <main className="flex flex-1 flex-col overflow-y-auto p-4">
-        {viewing ? (
-          <div>
+      {/* Recording banner */}
+      <AnimatePresence>
+        {state.recording && (
+          <RecordingBanner
+            onStop={() => void command(MESSAGE_TYPES.STOP_RECORDING)}
+            startTime={recordStartRef.current}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Tab navigation */}
+      <nav
+        role="tablist"
+        className="flex border-b border-surface-border px-4"
+        aria-label="Main navigation"
+      >
+        {TABS.map((tab) => {
+          const active = activeTab === tab.id;
+          return (
             <button
-              type="button"
-              onClick={() => setViewing(null)}
-              className="mb-3 text-[11px] text-zinc-500 transition-colors hover:text-zinc-200"
+              key={tab.id}
+              role="tab"
+              aria-selected={active}
+              tabIndex={active ? 0 : -1}
+              onClick={() => setActiveTab(tab.id)}
+              className={clsx(
+                "relative flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium transition-colors",
+                active ? "text-text-primary" : "text-text-tertiary hover:text-text-secondary",
+              )}
             >
-              ← Back
+              <tab.icon size={14} />
+              {tab.label}
+              {active && (
+                <motion.div
+                  layoutId="tab-underline"
+                  className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-accent-violet"
+                />
+              )}
             </button>
-            <p className="mb-2 truncate text-xs text-zinc-400" title={viewing.sourceUrl}>
-              {viewing.sourceUrl}
-            </p>
-            <MotionBreakdown graph={viewing.graph} frameworks={viewing.frameworks} />
-            <PromptPanel graph={viewing.graph} />
-          </div>
-        ) : selection.length > 0 || capture ? (
-          <>
-            {selection.length > 0 && (
-              <>
-                <div className="mb-3 flex items-center justify-between">
-                  <h2 className="text-xs font-medium text-zinc-300">
-                    {selection.length} element{selection.length === 1 ? "" : "s"} selected
-                  </h2>
-                  <button
-                    type="button"
-                    onClick={() => void command(MESSAGE_TYPES.CLEAR_SELECTION)}
-                    className="text-[11px] text-zinc-500 transition-colors hover:text-zinc-200"
+          );
+        })}
+      </nav>
+
+      {/* Tab content */}
+      <main className="flex flex-1 flex-col overflow-y-auto">
+        <AnimatePresence mode="wait">
+          {activeTab === "capture" && (
+            <motion.div
+              key="capture"
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 8 }}
+              transition={{ duration: 0.15 }}
+              className="flex flex-1 flex-col p-4"
+              role="tabpanel"
+              aria-label="Capture"
+            >
+              {viewing ? (
+                <div className="animate-fade-in">
+                  <Button
+                    variant="ghost"
+                    onClick={() => setViewing(null)}
+                    className="mb-3 h-7 px-2 text-xs-meta"
                   >
-                    Clear all
-                  </button>
-                </div>
-                <ul className="flex flex-col gap-2">
-                  {selection.map((element) => (
-                    <ElementCard key={element.selector} element={element} />
-                  ))}
-                </ul>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    void command(
-                      state.recording
-                        ? MESSAGE_TYPES.STOP_RECORDING
-                        : MESSAGE_TYPES.START_RECORDING,
-                    )
-                  }
-                  className={`mt-4 rounded-md px-3 py-2 text-xs font-medium transition-colors ${
-                    state.recording
-                      ? "bg-red-500/15 text-red-300 hover:bg-red-500/25"
-                      : "bg-zinc-100 text-zinc-950 hover:bg-white"
-                  }`}
-                >
-                  {state.recording ? "■ Stop recording" : "● Record interaction (max 10s)"}
-                </button>
-
-                {state.recording && (
-                  <p className="mt-2 text-center text-[11px] text-zinc-500">
-                    Trigger the interaction on the page — hover, click, or scroll.
+                    ← Back
+                  </Button>
+                  <p className="mb-2 truncate text-xs text-text-secondary" title={viewing.sourceUrl}>
+                    {viewing.sourceUrl}
                   </p>
-                )}
-              </>
-            )}
+                  <MotionBreakdown graph={viewing.graph} frameworks={viewing.frameworks} />
+                  <PromptPanel graph={viewing.graph} />
+                </div>
+              ) : selection.length > 0 || capture ? (
+                <>
+                  {selection.length > 0 && (
+                    <>
+                      <SectionHeader
+                        title={`${selection.length} element${selection.length === 1 ? "" : "s"} selected`}
+                        action={
+                          <Button
+                            variant="ghost"
+                            onClick={() => void command(MESSAGE_TYPES.CLEAR_SELECTION)}
+                            className="h-7 px-2 text-xs-meta"
+                          >
+                            Clear all
+                          </Button>
+                        }
+                        className="mb-3"
+                      />
 
-            {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+                      <ul className="flex flex-col gap-2">
+                        <AnimatePresence>
+                          {selection.map((element, i) => (
+                            <ElementCard
+                              key={element.selector}
+                              element={element}
+                              index={i}
+                              onRemove={() => removeElement(element.selector)}
+                            />
+                          ))}
+                        </AnimatePresence>
+                      </ul>
 
-            {capture && (
-              <CaptureReport
-                capture={capture}
-                frameworks={frameworks}
-                onSaveOriginal={handleSaveOriginal}
-                onSaveToHistory={handleSaveToHistory}
+                      {/* Record button */}
+                      {!state.recording && (
+                        <Button
+                          variant={state.recording ? "danger" : "primary"}
+                          icon={Crosshair}
+                          onClick={() => void command(MESSAGE_TYPES.START_RECORDING)}
+                          className="mt-4 h-11 w-full"
+                        >
+                          <span className="flex-1 text-left">Record interaction</span>
+                          <span className="text-xs-meta opacity-60">10s max</span>
+                        </Button>
+                      )}
+
+                      {state.recording && (
+                        <motion.p
+                          initial={{ opacity: 0, y: 4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="mt-2 text-center text-xs text-text-secondary"
+                        >
+                          Trigger the interaction — hover, click, or scroll.
+                        </motion.p>
+                      )}
+                    </>
+                  )}
+
+                  {error && (
+                    <ErrorCard
+                      message={error}
+                      onRetry={() => setError(null)}
+                      onDismiss={() => setError(null)}
+                    />
+                  )}
+
+                  {capture && (
+                    <CaptureReport
+                      capture={capture}
+                      frameworks={frameworks}
+                      onSaveOriginal={handleSaveOriginal}
+                      onSaveToHistory={handleSaveToHistory}
+                    />
+                  )}
+
+                  {original && recreationGraph && recreationGraph.nodes.length > 0 && (
+                    <ValidationPanel
+                      original={original}
+                      recreation={recreationGraph}
+                      onClearOriginal={handleClearOriginal}
+                    />
+                  )}
+                </>
+              ) : (
+                <GuidedIdle active={state.active} />
+              )}
+
+              {/* Discovery — visible when active */}
+              {!viewing && state.active && (
+                <DiscoveryPanel
+                  discovered={discovered}
+                  scanning={scanning}
+                  onScan={() => void scanPage()}
+                  onSelect={(selector) => void selectDiscovered(selector)}
+                />
+              )}
+            </motion.div>
+          )}
+
+          {activeTab === "library" && (
+            <motion.div
+              key="library"
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 8 }}
+              transition={{ duration: 0.15 }}
+              className="flex flex-1 flex-col p-4"
+              role="tabpanel"
+              aria-label="Library"
+            >
+              <HistoryList
+                entries={history}
+                onOpen={(entry) => {
+                  setViewing(entry);
+                  setActiveTab("capture");
+                }}
+                onDelete={(entry) => void deleteAnalysis(entry.id).then(setHistory)}
+                onUpdateTags={(entry, tags) =>
+                  void updateAnalysisTags(entry.id, tags).then(setHistory)
+                }
               />
-            )}
+            </motion.div>
+          )}
 
-            {original && recreationGraph && recreationGraph.nodes.length > 0 && (
-              <ValidationPanel
-                original={original}
-                recreation={recreationGraph}
-                onClearOriginal={handleClearOriginal}
-              />
-            )}
-          </>
-        ) : (
-          <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
-            {state.active ? (
-              <>
-                <h2 className="text-sm font-medium">Pick an element</h2>
-                <p className="max-w-xs text-xs text-zinc-400">
-                  Hover the page to highlight elements, click to select them. Press Escape to clear
-                  the selection, or again to stop.
-                </p>
-              </>
-            ) : (
-              <>
-                <h2 className="text-sm font-medium">No analysis yet</h2>
-                <p className="max-w-xs text-xs text-zinc-400">
-                  Activate MotionLens from the toolbar popup, then select an element to capture its
-                  motion.
-                </p>
-                <ol className="mt-3 max-w-xs list-inside list-decimal space-y-1 rounded-md border border-zinc-800 bg-zinc-900/40 p-3 text-left text-[11px] text-zinc-500">
-                  <li>
-                    Activate with the toolbar popup or{" "}
-                    <kbd className="rounded bg-zinc-800 px-1 font-mono text-[10px]">
-                      Alt+Shift+M
-                    </kbd>
-                  </li>
-                  <li>Hover and click to select the animated element(s)</li>
-                  <li>Record, then trigger the interaction on the page</li>
-                  <li>Copy the generated prompt into your AI tool</li>
-                </ol>
-              </>
-            )}
-          </div>
-        )}
-
-        {!viewing && state.active && (
-          <section className="mt-4 border-t border-zinc-900 pt-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xs font-medium text-zinc-300">Discover</h2>
-              <button
-                type="button"
-                disabled={scanning}
-                onClick={() => void scanPage()}
-                className="text-[11px] text-zinc-500 transition-colors hover:text-zinc-200 disabled:opacity-50"
-              >
-                {scanning ? "Scanning…" : discovered ? "Rescan" : "Scan this page"}
-              </button>
-            </div>
-            {discovered && discovered.length === 0 && (
-              <p className="mt-2 text-[11px] text-zinc-600">
-                No likely interactions found on this page.
-              </p>
-            )}
-            {discovered && discovered.length > 0 && (
-              <ul className="mt-2 flex max-h-56 flex-col gap-1 overflow-y-auto">
-                {discovered.map((interaction) => (
-                  <li
-                    key={interaction.selector}
-                    className="flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900/60 px-2 py-1.5"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p
-                        className="truncate font-mono text-[10px] text-zinc-300"
-                        title={interaction.selector}
-                      >
-                        {interaction.selector}
-                      </p>
-                      <p className="text-[9px] text-zinc-600">{interaction.evidence.join(" · ")}</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => void selectDiscovered(interaction.selector)}
-                      className="shrink-0 rounded bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-200 hover:bg-zinc-700"
-                    >
-                      Select
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        )}
-
-        {!viewing && (
-          <>
-            <HistoryList
-              entries={history}
-              onOpen={setViewing}
-              onDelete={(entry) => void deleteAnalysis(entry.id).then(setHistory)}
-              onUpdateTags={(entry, tags) =>
-                void updateAnalysisTags(entry.id, tags).then(setHistory)
-              }
-            />
-            <SyncPanel onHistoryChanged={setHistory} />
-          </>
-        )}
+          {activeTab === "sync" && (
+            <motion.div
+              key="sync"
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 8 }}
+              transition={{ duration: 0.15 }}
+              className="flex flex-1 flex-col p-4"
+              role="tabpanel"
+              aria-label="Sync"
+            >
+              <SyncPanel onHistoryChanged={setHistory} />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </main>
-
-      <footer className="border-t border-zinc-900 px-4 py-2 text-center text-[10px] text-zinc-600">
-        See it. Decode it. Recreate it.
-      </footer>
     </div>
   );
 }
