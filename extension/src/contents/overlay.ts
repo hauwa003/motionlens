@@ -111,6 +111,12 @@ chrome.runtime.onMessage.addListener(
       case MESSAGE_TYPES.STATE_CHANGED:
         if (message.state.active) {
           picker.enable();
+          // Start or stop ambient based on the ambient flag in state
+          if (message.state.ambient) {
+            startAmbient();
+          } else {
+            stopAmbient();
+          }
         } else {
           if (recorder?.isRecording) recorder.stop();
           recorder = null;
