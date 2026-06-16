@@ -80,6 +80,18 @@ function AmbientBurstCard({
       transition={{ duration: 0.2 }}
     >
       <Card interactive className="overflow-hidden">
+        {/* Screenshot preview */}
+        {burst.screenshot && (
+          <div className="mb-2 overflow-hidden rounded-md">
+            <img
+              src={burst.screenshot}
+              alt="Page screenshot when animation was detected"
+              className="w-full h-auto"
+              loading="lazy"
+            />
+          </div>
+        )}
+
         {/* Header — always visible */}
         <button
           type="button"

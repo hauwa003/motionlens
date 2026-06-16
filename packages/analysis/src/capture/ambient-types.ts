@@ -10,6 +10,8 @@ export interface AmbientBurst {
   elementCount: number;
   /** ISO timestamp when the burst was first detected. */
   detectedAt: string;
+  /** Base64 data URL of the visible tab when the burst settled. */
+  screenshot?: string;
 }
 
 export interface AmbientObserverOptions {
