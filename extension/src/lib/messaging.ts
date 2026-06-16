@@ -51,6 +51,8 @@ export const MESSAGE_TYPES = {
   SCAN_INTERACTIONS: "motionlens/scan-interactions",
   /** UI → background → content: add an element to the selection by selector. */
   SELECT_ELEMENT: "motionlens/select-element",
+  /** UI → background → content: remove a single element from the selection by selector. */
+  REMOVE_ELEMENT: "motionlens/remove-element",
 } as const;
 
 export interface TabState {
@@ -91,7 +93,8 @@ export type ExtensionMessage =
   | { type: typeof MESSAGE_TYPES.GET_FRAMEWORKS; tabId?: number }
   | { type: typeof MESSAGE_TYPES.FRAMEWORKS_CHANGED; tabId: number; frameworks: FrameworkScore[] }
   | { type: typeof MESSAGE_TYPES.SCAN_INTERACTIONS; tabId?: number }
-  | { type: typeof MESSAGE_TYPES.SELECT_ELEMENT; tabId?: number; selector: string };
+  | { type: typeof MESSAGE_TYPES.SELECT_ELEMENT; tabId?: number; selector: string }
+  | { type: typeof MESSAGE_TYPES.REMOVE_ELEMENT; tabId?: number; selector: string };
 
 export interface ExtensionResponse {
   ok: boolean;
