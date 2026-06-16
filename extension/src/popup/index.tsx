@@ -1,5 +1,8 @@
+import clsx from "clsx";
+import { AlertCircle, AlertTriangle, ChevronRight, Globe, PanelRight, Square, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { Button, EmptyState, ErrorCard, LoadingSpinner, Pill } from "~components/ui";
 import {
   getActiveTab,
   MESSAGE_TYPES,
@@ -36,7 +39,6 @@ function IndexPopup() {
     })();
   }, []);
 
-  // Keep the toggle in sync if state changes elsewhere (e.g. side panel).
   useEffect(() => {
     const listener = (message: ExtensionMessage) => {
       if (message.type === MESSAGE_TYPES.STATE_CHANGED && message.tabId === tabId) {
@@ -70,48 +72,79 @@ function IndexPopup() {
   const active = status === "active";
 
   return (
-    <div className="flex w-72 flex-col gap-4 bg-zinc-950 p-4 text-zinc-100">
+    <div className="flex w-80 flex-col gap-3 bg-surface p-4 text-text-primary font-sans">
+      {/* Header */}
       <header className="flex items-center justify-between">
-        <h1 className="text-sm font-semibold tracking-tight">MotionLens</h1>
-        <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-zinc-400">
+        <h1 className="text-base font-semibold tracking-tight">
+          Motion<span className="text-accent-violet">Lens</span>
+        </h1>
+        <Pill
+          variant={active ? "emerald" : status === "unavailable" ? "red" : "default"}
+        >
           <span
-            className={`h-2 w-2 rounded-full ${
-              active ? "bg-emerald-400" : status === "unavailable" ? "bg-red-400" : "bg-zinc-600"
-            }`}
+            className={clsx(
+              "h-1.5 w-1.5 rounded-full",
+              active ? "bg-accent-emerald animate-pulse" : status === "unavailable" ? "bg-accent-red" : "bg-text-disabled",
+            )}
           />
-          {status === "loading" ? "…" : status}
-        </span>
+          {status === "loading" ? "..." : status}
+        </Pill>
       </header>
 
-      {host && <p className="truncate text-xs text-zinc-500">{host}</p>}
-
-      {status === "unavailable" ? (
-        <p className="text-xs text-zinc-400">
-          MotionLens can't analyze this page. Open a regular website and try again.
-        </p>
-      ) : (
-        <button
-          type="button"
-          disabled={status === "loading"}
-          onClick={() => void toggle()}
-          className={`rounded-md px-3 py-2 text-xs font-medium transition-colors disabled:opacity-50 ${
-            active
-              ? "bg-zinc-800 text-zinc-100 hover:bg-zinc-700"
-              : "bg-zinc-100 text-zinc-950 hover:bg-white"
-          }`}
-        >
-          {active ? "Stop analyzing" : "Analyze this page"}
-        </button>
+      {/* Host */}
+      {host && (
+        <div className="flex items-center gap-1.5 text-xs text-text-secondary">
+          <Globe size={12} className="shrink-0 text-text-tertiary" />
+          <span className="truncate">{host}</span>
+        </div>
       )}
 
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {/* Loading */}
+      {status === "loading" && (
+        <div className="flex justify-center py-4">
+          <LoadingSpinner />
+        </div>
+      )}
 
+      {/* Unavailable */}
+      {status === "unavailable" && (
+        <EmptyState
+          icon={AlertCircle}
+          title="Can't analyze this page"
+          description="Open a regular website and try again."
+        />
+      )}
+
+      {/* Toggle button */}
+      {(status === "idle" || status === "active") && (
+        <Button
+          variant={active ? "danger" : "primary"}
+          icon={active ? Square : Zap}
+          onClick={() => void toggle()}
+          className="h-11 w-full text-sm"
+        >
+          {active ? "Stop analyzing" : "Analyze this page"}
+        </Button>
+      )}
+
+      {/* Error */}
+      {error && (
+        <ErrorCard
+          message={error}
+          onDismiss={() => setError(null)}
+          onRetry={() => void toggle()}
+        />
+      )}
+
+      {/* Side panel link */}
       <button
         type="button"
         onClick={openSidePanel}
-        className="text-left text-xs text-zinc-400 underline-offset-2 transition-colors hover:text-zinc-200 hover:underline"
+        className="flex h-10 w-full items-center gap-2 rounded-lg border border-surface-border bg-surface-raised px-3 text-xs text-text-secondary transition-colors hover:border-accent-violet-border hover:text-text-primary"
       >
-        Open side panel →
+        <PanelRight size={14} className="text-text-tertiary" />
+        <span className="flex-1 text-left">Open side panel</span>
+        <ChevronRight size={14} className="text-text-disabled" />
       </button>
     </div>
   );
