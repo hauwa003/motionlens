@@ -1,4 +1,9 @@
-import { scoreFrameworks, type FrameworkScore, type RawCapture } from "@motionlens/analysis";
+import {
+  scoreFrameworks,
+  type AmbientBurst,
+  type FrameworkScore,
+  type RawCapture,
+} from "@motionlens/analysis";
 
 import {
   MESSAGE_TYPES,
@@ -21,8 +26,11 @@ const stateKey = (tabId: number) => `tab-state:${tabId}`;
 const selectionKey = (tabId: number) => `tab-selection:${tabId}`;
 const captureKey = (tabId: number) => `tab-capture:${tabId}`;
 const frameworksKey = (tabId: number) => `tab-frameworks:${tabId}`;
+const burstsKey = (tabId: number) => `tab-bursts:${tabId}`;
 
-const INACTIVE: TabState = { active: false, recording: false };
+const MAX_BURSTS = 50;
+
+const INACTIVE: TabState = { active: false, recording: false, ambient: false };
 
 async function getTabState(tabId: number): Promise<TabState> {
   const key = stateKey(tabId);
@@ -40,6 +48,23 @@ async function getTabCapture(tabId: number): Promise<RawCapture | undefined> {
   const key = captureKey(tabId);
   const result = await chrome.storage.session.get(key);
   return result[key] as RawCapture | undefined;
+}
+
+async function getTabBursts(tabId: number): Promise<AmbientBurst[]> {
+  const key = burstsKey(tabId);
+  const result = await chrome.storage.session.get(key);
+  return (result[key] as AmbientBurst[] | undefined) ?? [];
+}
+
+async function addTabBurst(tabId: number, burst: AmbientBurst): Promise<AmbientBurst[]> {
+  const existing = await getTabBursts(tabId);
+  const updated = [burst, ...existing].slice(0, MAX_BURSTS);
+  await chrome.storage.session.set({ [burstsKey(tabId)]: updated });
+  return updated;
+}
+
+async function clearTabBursts(tabId: number): Promise<void> {
+  await chrome.storage.session.remove(burstsKey(tabId));
 }
 
 /** Notify extension surfaces and the affected tab. Either may be closed. */
@@ -116,14 +141,23 @@ async function handleMessage(
         };
       }
 
-      const state: TabState = { active: true, recording: false };
+      // Start ambient observation automatically on activation
+      chrome.tabs
+        .sendMessage(tabId, { type: MESSAGE_TYPES.START_AMBIENT, tabId })
+        .catch(() => undefined);
+
+      const state: TabState = { active: true, recording: false, ambient: true };
       await setTabState(tabId, state);
       return { ok: true, state, dom: pong.dom };
     }
 
     case MESSAGE_TYPES.DEACTIVATE: {
-      const state: TabState = { active: false, recording: false };
+      chrome.tabs
+        .sendMessage(tabId, { type: MESSAGE_TYPES.STOP_AMBIENT, tabId })
+        .catch(() => undefined);
+      const state: TabState = { active: false, recording: false, ambient: false };
       await setTabSelection(tabId, []);
+      await clearTabBursts(tabId);
       await setTabState(tabId, state);
       return { ok: true, state };
     }
@@ -158,7 +192,7 @@ async function handleMessage(
 
       if (!response.ok) return response;
 
-      await setTabState(tabId, { active: true, recording: true });
+      await setTabState(tabId, { active: true, recording: true, ambient: false });
       return response;
     }
 
@@ -170,7 +204,7 @@ async function handleMessage(
         })
         .catch(() => ({ ok: false, error: "Couldn't reach the page." }) as ExtensionResponse);
 
-      await setTabState(tabId, { active: true, recording: false });
+      await setTabState(tabId, { active: true, recording: false, ambient: true });
       if (response.ok && response.capture) {
         await setTabCapture(tabId, response.capture);
       }
@@ -178,10 +212,38 @@ async function handleMessage(
     }
 
     case MESSAGE_TYPES.RECORDING_AUTO_STOPPED: {
-      await setTabState(tabId, { active: true, recording: false });
+      await setTabState(tabId, { active: true, recording: false, ambient: true });
       await setTabCapture(tabId, message.capture);
       return { ok: true };
     }
+
+    case MESSAGE_TYPES.START_AMBIENT:
+      chrome.tabs
+        .sendMessage(tabId, { type: MESSAGE_TYPES.START_AMBIENT, tabId })
+        .catch(() => undefined);
+      return { ok: true };
+
+    case MESSAGE_TYPES.STOP_AMBIENT:
+      chrome.tabs
+        .sendMessage(tabId, { type: MESSAGE_TYPES.STOP_AMBIENT, tabId })
+        .catch(() => undefined);
+      return { ok: true };
+
+    case MESSAGE_TYPES.AMBIENT_BURST: {
+      await addTabBurst(tabId, message.burst);
+      // Notify UI surfaces about the new burst
+      chrome.runtime
+        .sendMessage({ type: MESSAGE_TYPES.AMBIENT_BURST_CHANGED, tabId, burst: message.burst })
+        .catch(() => undefined);
+      return { ok: true };
+    }
+
+    case MESSAGE_TYPES.GET_AMBIENT_BURSTS:
+      return { ok: true, bursts: await getTabBursts(tabId) };
+
+    case MESSAGE_TYPES.CLEAR_AMBIENT_BURSTS:
+      await clearTabBursts(tabId);
+      return { ok: true };
 
     default:
       return { ok: false, error: "Unhandled message type." };
@@ -215,7 +277,13 @@ chrome.commands.onCommand.addListener((command) => {
 // Drop state for closed tabs.
 chrome.tabs.onRemoved.addListener((tabId) => {
   chrome.storage.session
-    .remove([stateKey(tabId), selectionKey(tabId), captureKey(tabId), frameworksKey(tabId)])
+    .remove([
+      stateKey(tabId),
+      selectionKey(tabId),
+      captureKey(tabId),
+      frameworksKey(tabId),
+      burstsKey(tabId),
+    ])
     .catch(() => undefined);
 });
 
