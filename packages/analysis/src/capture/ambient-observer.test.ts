@@ -62,12 +62,29 @@ function simulateInvisible(el: Element) {
 
 let styleOverrides = new Map<Element, Record<string, string>>();
 
+/**
+ * Default values for non-animated elements — every animatable signal is off.
+ */
+const PLAIN_DEFAULTS: Record<string, string> = {
+  _transitionDuration: "0s",
+  _transitionProperty: "none",
+  _animationName: "none",
+  _willChange: "auto",
+  _opacity: "1",
+  _transform: "none",
+  opacity: "1",
+  transform: "none",
+};
+
 function mockGetComputedStyle(el: Element): CSSStyleDeclaration {
   const overrides = styleOverrides.get(el) ?? {};
   return {
     transitionDuration: overrides._transitionDuration ?? "0.3s",
     transitionProperty: overrides._transitionProperty ?? "all",
     animationName: overrides._animationName ?? "none",
+    willChange: overrides._willChange ?? "auto",
+    opacity: overrides._opacity ?? "1",
+    transform: overrides._transform ?? "none",
     getPropertyValue(prop: string) {
       return overrides[prop] ?? "none";
     },
@@ -105,12 +122,15 @@ beforeEach(() => {
     return el;
   });
 
-  // Set default style overrides (transition properties)
+  // Set default style overrides (elements with CSS transition — animatable)
   for (const el of mockElements) {
     styleOverrides.set(el, {
       _transitionDuration: "0.3s",
       _transitionProperty: "all",
       _animationName: "none",
+      _willChange: "auto",
+      _opacity: "1",
+      _transform: "none",
       opacity: "1",
       transform: "none",
     });
@@ -148,18 +168,13 @@ describe("AmbientObserver", () => {
     observer.stop();
   });
 
-  it("skips elements without transitions or animations", () => {
-    // Add a non-animated element
+  it("skips elements without any animatable signal", () => {
+    // Add a fully-plain element — no transition, no animation, default
+    // opacity/transform/will-change
     const plainEl = document.createElement("span");
     plainEl.className = "plain";
     document.body.appendChild(plainEl);
-    styleOverrides.set(plainEl, {
-      _transitionDuration: "0s",
-      _transitionProperty: "none",
-      _animationName: "none",
-      opacity: "1",
-      transform: "none",
-    });
+    styleOverrides.set(plainEl, { ...PLAIN_DEFAULTS });
 
     const observer = new AmbientObserver({
       buildSelector: (el) => (el as HTMLElement).className,
@@ -169,6 +184,47 @@ describe("AmbientObserver", () => {
     observer.start();
     // Only the 3 animated elements should be observed, not the plain one
     expect(observedElements.size).toBe(3);
+    observer.stop();
+  });
+
+  it("watches elements with non-default opacity (e.g. scroll-fade targets)", () => {
+    const fadeEl = document.createElement("div");
+    fadeEl.className = "fade-target";
+    document.body.appendChild(fadeEl);
+    styleOverrides.set(fadeEl, {
+      ...PLAIN_DEFAULTS,
+      _opacity: "0",        // starts invisible — common for scroll-in animations
+      opacity: "0",
+    });
+
+    const observer = new AmbientObserver({
+      buildSelector: (el) => (el as HTMLElement).className,
+      onBurst: () => {},
+    });
+
+    observer.start();
+    // 3 animated + 1 opacity=0 element
+    expect(observedElements.size).toBe(4);
+    observer.stop();
+  });
+
+  it("watches elements with will-change set", () => {
+    const willEl = document.createElement("div");
+    willEl.className = "will-change-target";
+    document.body.appendChild(willEl);
+    styleOverrides.set(willEl, {
+      ...PLAIN_DEFAULTS,
+      _willChange: "transform, opacity",
+    });
+
+    const observer = new AmbientObserver({
+      buildSelector: (el) => (el as HTMLElement).className,
+      onBurst: () => {},
+    });
+
+    observer.start();
+    // 3 animated + 1 will-change element
+    expect(observedElements.size).toBe(4);
     observer.stop();
   });
 
@@ -327,7 +383,11 @@ describe("AmbientObserver", () => {
         _transitionDuration: "0.5s",
         _transitionProperty: "all",
         _animationName: "none",
+        _willChange: "auto",
+        _opacity: "1",
+        _transform: "none",
         opacity: "1",
+        transform: "none",
       });
     }
 

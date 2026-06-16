@@ -14,6 +14,10 @@ import {
  * Uses IntersectionObserver to track which elements are visible, then polls
  * only visible elements via a throttled RAF loop. When style changes cluster
  * within a settle window then go silent, the burst is emitted.
+ *
+ * A MutationObserver watches the entire page for class/style attribute changes
+ * so that elements animated by JS libraries (GSAP, AOS, Framer Motion, etc.)
+ * are picked up the instant their animation classes are applied.
  */
 
 const OBSERVED_EVENT_TYPES = [
@@ -53,6 +57,7 @@ export class AmbientObserver {
   private watched = new Map<Element, WatchedEntry>();
   private visible = new Set<Element>();
   private intersectionObserver: IntersectionObserver | null = null;
+  private mutationObserver: MutationObserver | null = null;
   private rafId: number | null = null;
   private rescanTimer: ReturnType<typeof setInterval> | null = null;
   private frameCount = 0;
@@ -93,6 +98,17 @@ export class AmbientObserver {
       { rootMargin: "200px" },
     );
 
+    // Watch the entire page for class/style attribute changes so we catch
+    // elements animated by JS libraries (GSAP ScrollTrigger, AOS, Framer
+    // Motion, etc.) the moment their animation classes are applied.
+    this.mutationObserver = new MutationObserver(this.handleMutations);
+    this.mutationObserver.observe(document.body, {
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["class", "style"],
+      childList: true,
+    });
+
     this.scanForElements();
     this.rescanTimer = setInterval(() => this.scanForElements(), this.rescanIntervalMs);
 
@@ -119,6 +135,9 @@ export class AmbientObserver {
 
     this.intersectionObserver?.disconnect();
     this.intersectionObserver = null;
+
+    this.mutationObserver?.disconnect();
+    this.mutationObserver = null;
 
     for (const type of OBSERVED_EVENT_TYPES) {
       window.removeEventListener(type, this.handleEvent, true);
@@ -220,6 +239,35 @@ export class AmbientObserver {
     this.rafId = requestAnimationFrame(this.tick);
   };
 
+  /**
+   * MutationObserver callback — when a class or style attribute changes on any
+   * element, or new elements are added to the DOM, we immediately check if
+   * they should be watched. This catches animation libraries that add classes
+   * dynamically (AOS `data-aos-animate`, GSAP ScrollTrigger, Framer Motion,
+   * Tailwind `animate-*`, etc.).
+   */
+  private handleMutations = (records: MutationRecord[]) => {
+    if (!this.intersectionObserver) return;
+
+    for (const record of records) {
+      if (record.type === "attributes") {
+        const target = record.target;
+        if (!(target instanceof HTMLElement)) continue;
+        this.tryWatch(target);
+      } else if (record.type === "childList") {
+        for (const node of record.addedNodes) {
+          if (!(node instanceof HTMLElement)) continue;
+          this.tryWatch(node);
+          // Also check immediate children of added nodes (common for
+          // frameworks that insert wrapper divs with animated children)
+          for (const child of node.querySelectorAll("*")) {
+            if (child instanceof HTMLElement) this.tryWatch(child);
+          }
+        }
+      }
+    }
+  };
+
   private handleEvent = (event: Event) => {
     if (!this.activeBurst || this.paused) return;
     if (this.activeBurst.events.length >= MAX_EVENTS) return;
@@ -265,6 +313,66 @@ export class AmbientObserver {
     });
   }
 
+  /**
+   * Try to add a single element to the watch list. Checks if the element is
+   * animatable (has transition, animation, will-change, or non-default
+   * transform/opacity indicating it's mid-animation).
+   */
+  private tryWatch(element: HTMLElement): void {
+    if (!this.intersectionObserver) return;
+    if (this.watched.has(element)) return;
+    if (this.watched.size >= this.maxWatchedElements) return;
+
+    const style = getComputedStyle(element);
+    if (this.isAnimatable(style)) {
+      this.addToWatchList(element, style);
+    }
+  }
+
+  /**
+   * Broader check than just transition/animation. Also catches:
+   * - Elements with `will-change` set (intent to animate)
+   * - Elements with non-default opacity (likely mid-animation or animated)
+   * - Elements with transform set (likely animated)
+   */
+  private isAnimatable(style: CSSStyleDeclaration): boolean {
+    // Has CSS transition
+    const hasTransition =
+      style.transitionDuration.split(",").some((d) => parseFloat(d) > 0) &&
+      style.transitionProperty !== "none";
+    if (hasTransition) return true;
+
+    // Has CSS animation
+    if (style.animationName !== "none") return true;
+
+    // Has will-change hint (the developer intends to animate this)
+    const willChange = style.willChange;
+    if (willChange && willChange !== "auto") return true;
+
+    // Non-default opacity (many scroll animations fade in from 0)
+    const opacity = parseFloat(style.opacity);
+    if (!isNaN(opacity) && opacity < 1) return true;
+
+    // Non-default transform (translateY, scale, etc.)
+    const transform = style.transform;
+    if (transform && transform !== "none") return true;
+
+    return false;
+  }
+
+  private addToWatchList(element: HTMLElement, style: CSSStyleDeclaration): void {
+    if (!this.intersectionObserver) return;
+
+    const selector = this.buildSelector(element);
+    const last: Record<string, string> = {};
+    for (const property of TRACKED_PROPERTIES) {
+      last[property] = style.getPropertyValue(property);
+    }
+
+    this.watched.set(element, { selector, last });
+    this.intersectionObserver.observe(element);
+  }
+
   private scanForElements(): void {
     if (!this.intersectionObserver) return;
 
@@ -279,22 +387,9 @@ export class AmbientObserver {
       if (!(element instanceof HTMLElement)) continue;
 
       const style = getComputedStyle(element);
-      const hasTransition =
-        style.transitionDuration.split(",").some((d) => parseFloat(d) > 0) &&
-        style.transitionProperty !== "none";
-      const hasAnimation = style.animationName !== "none";
+      if (!this.isAnimatable(style)) continue;
 
-      if (!hasTransition && !hasAnimation) continue;
-
-      const selector = this.buildSelector(element);
-      // Take baseline snapshot so first real change is a delta
-      const last: Record<string, string> = {};
-      for (const property of TRACKED_PROPERTIES) {
-        last[property] = style.getPropertyValue(property);
-      }
-
-      this.watched.set(element, { selector, last });
-      this.intersectionObserver.observe(element);
+      this.addToWatchList(element, style);
     }
   }
 }
