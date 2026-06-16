@@ -41,13 +41,18 @@ let ambientObserver: AmbientObserver | null = null;
 
 function startAmbient(): void {
   if (ambientObserver) return;
+  console.log("[MotionLens] Starting ambient observer…");
   ambientObserver = new AmbientObserver({
     buildSelector,
     onBurst: (burst) => {
+      console.log(
+        `[MotionLens] Burst captured: ${burst.elementCount} element(s), ${burst.capture.frames.length} frames`,
+      );
       void sendToBackground({ type: MESSAGE_TYPES.AMBIENT_BURST, burst });
     },
   });
   ambientObserver.start();
+  console.log("[MotionLens] Ambient observer started");
 }
 
 function stopAmbient(): void {
@@ -179,7 +184,10 @@ window.addEventListener("message", (event: MessageEvent) => {
 });
 
 // If the page loaded (or reloaded) while this tab is already active,
-// re-enable the picker.
+// re-enable the picker and restart ambient observation.
 void sendToBackground({ type: MESSAGE_TYPES.GET_STATE }).then((response) => {
-  if (response.state?.active) picker.enable();
+  if (response.state?.active) {
+    picker.enable();
+    if (response.state.ambient) startAmbient();
+  }
 });

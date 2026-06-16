@@ -110,7 +110,18 @@ export class AmbientObserver {
     });
 
     this.scanForElements();
-    this.rescanTimer = setInterval(() => this.scanForElements(), this.rescanIntervalMs);
+    console.log(
+      `[MotionLens:AmbientObserver] Initial scan: watching ${this.watched.size} elements, ${this.visible.size} visible`,
+    );
+    this.rescanTimer = setInterval(() => {
+      const before = this.watched.size;
+      this.scanForElements();
+      if (this.watched.size > before) {
+        console.log(
+          `[MotionLens:AmbientObserver] Rescan: watching ${this.watched.size} elements (+${this.watched.size - before})`,
+        );
+      }
+    }, this.rescanIntervalMs);
 
     for (const type of OBSERVED_EVENT_TYPES) {
       window.addEventListener(type, this.handleEvent, { capture: true, passive: true });
@@ -326,6 +337,11 @@ export class AmbientObserver {
     const style = getComputedStyle(element);
     if (this.isAnimatable(style)) {
       this.addToWatchList(element, style);
+      console.log(
+        `[MotionLens:AmbientObserver] Mutation-detected element added (total: ${this.watched.size})`,
+        element.tagName,
+        element.className,
+      );
     }
   }
 
