@@ -1,4 +1,9 @@
-import type { FrameworkScore, FrameworkSignals, RawCapture } from "@motionlens/analysis";
+import type {
+  AmbientBurst,
+  FrameworkScore,
+  FrameworkSignals,
+  RawCapture,
+} from "@motionlens/analysis";
 
 import type { DiscoveredInteraction } from "~lib/scanner";
 
@@ -53,11 +58,24 @@ export const MESSAGE_TYPES = {
   SELECT_ELEMENT: "motionlens/select-element",
   /** UI → background → content: remove a single element from the selection by selector. */
   REMOVE_ELEMENT: "motionlens/remove-element",
+  /** UI → bg → content: start ambient observation. */
+  START_AMBIENT: "motionlens/start-ambient",
+  /** UI → bg → content: stop ambient observation. */
+  STOP_AMBIENT: "motionlens/stop-ambient",
+  /** Content → bg: a burst was captured. */
+  AMBIENT_BURST: "motionlens/ambient-burst",
+  /** UI → bg: get all bursts for a tab. */
+  GET_AMBIENT_BURSTS: "motionlens/get-ambient-bursts",
+  /** Background → UI: new burst available. */
+  AMBIENT_BURST_CHANGED: "motionlens/ambient-burst-changed",
+  /** UI → bg: clear all bursts. */
+  CLEAR_AMBIENT_BURSTS: "motionlens/clear-ambient-bursts",
 } as const;
 
 export interface TabState {
   active: boolean;
   recording: boolean;
+  ambient: boolean;
 }
 
 /** Snapshot of a selected element, safe to send across the extension. */
@@ -94,7 +112,13 @@ export type ExtensionMessage =
   | { type: typeof MESSAGE_TYPES.FRAMEWORKS_CHANGED; tabId: number; frameworks: FrameworkScore[] }
   | { type: typeof MESSAGE_TYPES.SCAN_INTERACTIONS; tabId?: number }
   | { type: typeof MESSAGE_TYPES.SELECT_ELEMENT; tabId?: number; selector: string }
-  | { type: typeof MESSAGE_TYPES.REMOVE_ELEMENT; tabId?: number; selector: string };
+  | { type: typeof MESSAGE_TYPES.REMOVE_ELEMENT; tabId?: number; selector: string }
+  | { type: typeof MESSAGE_TYPES.START_AMBIENT; tabId?: number }
+  | { type: typeof MESSAGE_TYPES.STOP_AMBIENT; tabId?: number }
+  | { type: typeof MESSAGE_TYPES.AMBIENT_BURST; tabId?: number; burst: AmbientBurst }
+  | { type: typeof MESSAGE_TYPES.GET_AMBIENT_BURSTS; tabId?: number }
+  | { type: typeof MESSAGE_TYPES.AMBIENT_BURST_CHANGED; tabId: number; burst: AmbientBurst }
+  | { type: typeof MESSAGE_TYPES.CLEAR_AMBIENT_BURSTS; tabId?: number };
 
 export interface ExtensionResponse {
   ok: boolean;
@@ -103,6 +127,7 @@ export interface ExtensionResponse {
   capture?: RawCapture;
   frameworks?: FrameworkScore[];
   interactions?: DiscoveredInteraction[];
+  bursts?: AmbientBurst[];
   /** Set by the content script's PING response to confirm DOM access. */
   dom?: { title: string; elementCount: number };
   error?: string;

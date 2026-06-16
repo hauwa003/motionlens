@@ -1,4 +1,9 @@
-import { CaptureRecorder, type FrameworkSignals, type RawCapture } from "@motionlens/analysis";
+import {
+  AmbientObserver,
+  CaptureRecorder,
+  type FrameworkSignals,
+  type RawCapture,
+} from "@motionlens/analysis";
 import type { PlasmoCSConfig } from "plasmo";
 
 import {
@@ -32,6 +37,23 @@ const picker = new ElementPicker({
 });
 
 let recorder: CaptureRecorder | null = null;
+let ambientObserver: AmbientObserver | null = null;
+
+function startAmbient(): void {
+  if (ambientObserver) return;
+  ambientObserver = new AmbientObserver({
+    buildSelector,
+    onBurst: (burst) => {
+      void sendToBackground({ type: MESSAGE_TYPES.AMBIENT_BURST, burst });
+    },
+  });
+  ambientObserver.start();
+}
+
+function stopAmbient(): void {
+  ambientObserver?.stop();
+  ambientObserver = null;
+}
 
 function startRecording(): ExtensionResponse {
   const roots = picker.getSelectedElements();
@@ -47,6 +69,7 @@ function startRecording(): ExtensionResponse {
     buildSelector,
     onAutoStop: (capture: RawCapture) => {
       picker.resume();
+      ambientObserver?.resume();
       void sendToBackground({ type: MESSAGE_TYPES.RECORDING_AUTO_STOPPED, capture });
     },
   });
@@ -86,6 +109,7 @@ chrome.runtime.onMessage.addListener(
         } else {
           if (recorder?.isRecording) recorder.stop();
           recorder = null;
+          stopAmbient();
           picker.disable();
         }
         sendResponse({ ok: true });
@@ -117,11 +141,23 @@ chrome.runtime.onMessage.addListener(
       }
 
       case MESSAGE_TYPES.START_RECORDING:
+        ambientObserver?.pause();
         sendResponse(startRecording());
         break;
 
       case MESSAGE_TYPES.STOP_RECORDING:
         sendResponse(stopRecording());
+        ambientObserver?.resume();
+        break;
+
+      case MESSAGE_TYPES.START_AMBIENT:
+        startAmbient();
+        sendResponse({ ok: true });
+        break;
+
+      case MESSAGE_TYPES.STOP_AMBIENT:
+        stopAmbient();
+        sendResponse({ ok: true });
         break;
 
       default:

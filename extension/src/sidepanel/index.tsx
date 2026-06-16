@@ -1,4 +1,9 @@
-import { buildMotionGraph, type FrameworkScore, type RawCapture } from "@motionlens/analysis";
+import {
+  buildMotionGraph,
+  type AmbientBurst,
+  type FrameworkScore,
+  type RawCapture,
+} from "@motionlens/analysis";
 import clsx from "clsx";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -40,6 +45,7 @@ import {
 } from "~lib/history";
 import type { DiscoveredInteraction } from "~lib/scanner";
 
+import { AmbientFeed } from "./ambient-feed";
 import { MotionBreakdown } from "./breakdown";
 import { HistoryList } from "./history";
 import { PromptPanel } from "./prompts";
@@ -76,7 +82,13 @@ const TABS: { id: Tab; label: string; icon: typeof Crosshair }[] = [
 /* ─── Status Badge ─── */
 
 function StatusBadge({ state }: { state: TabState }) {
-  const label = state.recording ? "Recording" : state.active ? "Analyzing" : "Idle";
+  const label = state.recording
+    ? "Recording"
+    : state.ambient
+      ? "Observing"
+      : state.active
+        ? "Analyzing"
+        : "Idle";
   const variant = state.recording ? "red" : state.active ? "emerald" : "default";
 
   return (
@@ -86,9 +98,11 @@ function StatusBadge({ state }: { state: TabState }) {
           "h-1.5 w-1.5 rounded-full",
           state.recording
             ? "bg-accent-red animate-pulse-record"
-            : state.active
-              ? "bg-accent-emerald"
-              : "bg-text-disabled",
+            : state.ambient
+              ? "bg-accent-emerald animate-pulse"
+              : state.active
+                ? "bg-accent-emerald"
+                : "bg-text-disabled",
         )}
       />
       {label}
@@ -456,10 +470,42 @@ function DiscoveryPanel({
   );
 }
 
+/* ─── Capture Mode Toggle ─── */
+
+type CaptureMode = "ambient" | "precision";
+
+function ModeToggle({
+  mode,
+  onChange,
+}: {
+  mode: CaptureMode;
+  onChange: (mode: CaptureMode) => void;
+}) {
+  return (
+    <div className="mb-3 flex rounded-lg border border-surface-border bg-surface-raised p-0.5">
+      {(["ambient", "precision"] as const).map((m) => (
+        <button
+          key={m}
+          type="button"
+          onClick={() => onChange(m)}
+          className={clsx(
+            "flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+            mode === m
+              ? "bg-accent-violet text-white"
+              : "text-text-secondary hover:text-text-primary",
+          )}
+        >
+          {m === "ambient" ? "Ambient" : "Precision"}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /* ─── Main Side Panel ─── */
 
 function IndexSidePanel() {
-  const [state, setState] = useState<TabState>({ active: false, recording: false });
+  const [state, setState] = useState<TabState>({ active: false, recording: false, ambient: false });
   const [tabId, setTabId] = useState<number | null>(null);
   const [selection, setSelection] = useState<SelectedElementInfo[]>([]);
   const [capture, setCapture] = useState<RawCapture | null>(null);
@@ -471,6 +517,9 @@ function IndexSidePanel() {
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("capture");
+  const [captureMode, setCaptureMode] = useState<CaptureMode>("ambient");
+  const [bursts, setBursts] = useState<AmbientBurst[]>([]);
+  const [expandedBurst, setExpandedBurst] = useState<string | null>(null);
   const recordStartRef = useRef(Date.now());
   const scrollPositions = useRef<Record<Tab, number>>({ capture: 0, library: 0, sync: 0 });
   const mainRef = useRef<HTMLElement>(null);
@@ -496,23 +545,40 @@ function IndexSidePanel() {
     void clearOriginal().then(() => setOriginal(null));
   };
 
+  const handleSaveBurst = useCallback(
+    (burst: AmbientBurst) => {
+      const graph = buildMotionGraph(burst.capture);
+      if (graph.nodes.length === 0) return;
+      void saveAnalysis(graph, frameworks).then(setHistory);
+    },
+    [frameworks],
+  );
+
+  const handleClearBursts = useCallback(async () => {
+    if (tabId === null) return;
+    setBursts([]);
+    await sendToBackground({ type: MESSAGE_TYPES.CLEAR_AMBIENT_BURSTS, tabId });
+  }, [tabId]);
+
   useEffect(() => {
     void (async () => {
       const tab = await getActiveTab();
       if (!tab?.id) return;
       setTabId(tab.id);
 
-      const [stateResponse, selectionResponse, captureResponse, frameworksResponse] =
+      const [stateResponse, selectionResponse, captureResponse, frameworksResponse, burstsResponse] =
         await Promise.all([
           sendToBackground({ type: MESSAGE_TYPES.GET_STATE, tabId: tab.id }),
           sendToBackground({ type: MESSAGE_TYPES.GET_SELECTION, tabId: tab.id }),
           sendToBackground({ type: MESSAGE_TYPES.GET_CAPTURE, tabId: tab.id }),
           sendToBackground({ type: MESSAGE_TYPES.GET_FRAMEWORKS, tabId: tab.id }),
+          sendToBackground({ type: MESSAGE_TYPES.GET_AMBIENT_BURSTS, tabId: tab.id }),
         ]);
       if (stateResponse.state) setState(stateResponse.state);
       setSelection(selectionResponse.selection ?? []);
       setCapture(captureResponse.capture ?? null);
       setFrameworks(frameworksResponse.frameworks ?? []);
+      setBursts(burstsResponse.bursts ?? []);
     })();
   }, []);
 
@@ -521,7 +587,10 @@ function IndexSidePanel() {
       if (message.type === MESSAGE_TYPES.STATE_CHANGED && message.tabId === tabId) {
         setState(message.state);
         if (message.state.recording) recordStartRef.current = Date.now();
-        if (!message.state.active) setSelection([]);
+        if (!message.state.active) {
+          setSelection([]);
+          setBursts([]);
+        }
       }
       if (message.type === MESSAGE_TYPES.SELECTION_CHANGED && message.tabId === tabId) {
         setSelection(message.selection);
@@ -531,6 +600,9 @@ function IndexSidePanel() {
       }
       if (message.type === MESSAGE_TYPES.FRAMEWORKS_CHANGED && message.tabId === tabId) {
         setFrameworks(message.frameworks);
+      }
+      if (message.type === MESSAGE_TYPES.AMBIENT_BURST_CHANGED && message.tabId === tabId) {
+        setBursts((prev) => [message.burst, ...prev].slice(0, 50));
       }
     };
     chrome.runtime.onMessage.addListener(listener);
@@ -703,107 +775,129 @@ function IndexSidePanel() {
                   <MotionBreakdown graph={viewing.graph} frameworks={viewing.frameworks} />
                   <PromptPanel graph={viewing.graph} />
                 </div>
-              ) : selection.length > 0 || capture ? (
+              ) : (
                 <>
-                  {selection.length > 0 && (
+                  {/* Mode toggle — visible when active */}
+                  {state.active && (
+                    <ModeToggle mode={captureMode} onChange={setCaptureMode} />
+                  )}
+
+                  {/* Ambient mode */}
+                  {state.active && captureMode === "ambient" ? (
+                    <AmbientFeed
+                      bursts={bursts}
+                      expandedId={expandedBurst}
+                      onToggle={(id) =>
+                        setExpandedBurst((prev) => (prev === id ? null : id))
+                      }
+                      onSave={handleSaveBurst}
+                      onClear={() => void handleClearBursts()}
+                      frameworks={frameworks}
+                    />
+                  ) : /* Precision mode */
+                  selection.length > 0 || capture ? (
                     <>
-                      <SectionHeader
-                        title={`${selection.length} element${selection.length === 1 ? "" : "s"} selected`}
-                        action={
-                          <Button
-                            variant="ghost"
-                            onClick={() => void command(MESSAGE_TYPES.CLEAR_SELECTION)}
-                            className="h-7 px-2 text-xs-meta"
-                          >
-                            Clear all
-                          </Button>
-                        }
-                        className="mb-3"
-                      />
+                      {selection.length > 0 && (
+                        <>
+                          <SectionHeader
+                            title={`${selection.length} element${selection.length === 1 ? "" : "s"} selected`}
+                            action={
+                              <Button
+                                variant="ghost"
+                                onClick={() => void command(MESSAGE_TYPES.CLEAR_SELECTION)}
+                                className="h-7 px-2 text-xs-meta"
+                              >
+                                Clear all
+                              </Button>
+                            }
+                            className="mb-3"
+                          />
 
-                      <ul className="flex flex-col gap-2">
-                        <AnimatePresence>
-                          {selection.map((element, i) => (
-                            <ElementCard
-                              key={element.selector}
-                              element={element}
-                              index={i}
-                              onRemove={() => removeElement(element.selector)}
-                            />
-                          ))}
-                        </AnimatePresence>
-                      </ul>
+                          <ul className="flex flex-col gap-2">
+                            <AnimatePresence>
+                              {selection.map((element, i) => (
+                                <ElementCard
+                                  key={element.selector}
+                                  element={element}
+                                  index={i}
+                                  onRemove={() => removeElement(element.selector)}
+                                />
+                              ))}
+                            </AnimatePresence>
+                          </ul>
 
-                      {/* Record button */}
-                      {!state.recording && (
-                        <Button
-                          variant={state.recording ? "danger" : "primary"}
-                          icon={Crosshair}
-                          onClick={() => void command(MESSAGE_TYPES.START_RECORDING)}
-                          className="mt-4 h-11 w-full"
-                        >
-                          <span className="flex-1 text-left">Record</span>
-                          <span className="text-xs-meta opacity-60">10s max</span>
-                        </Button>
+                          {/* Record button */}
+                          {!state.recording && (
+                            <Button
+                              variant={state.recording ? "danger" : "primary"}
+                              icon={Crosshair}
+                              onClick={() => void command(MESSAGE_TYPES.START_RECORDING)}
+                              className="mt-4 h-11 w-full"
+                            >
+                              <span className="flex-1 text-left">Record</span>
+                              <span className="text-xs-meta opacity-60">10s max</span>
+                            </Button>
+                          )}
+
+                          {state.recording && (
+                            <motion.div
+                              initial={{ opacity: 0, y: 4 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              className="mt-3 rounded-lg border border-accent-red-border bg-accent-red-muted p-3 text-center"
+                            >
+                              <div className="flex items-center justify-center gap-2">
+                                <span className="h-2 w-2 rounded-full bg-accent-red animate-pulse-record" />
+                                <span className="text-xs font-medium text-red-200">Recording in progress</span>
+                              </div>
+                              <p className="mt-1 text-xs text-red-200/70">
+                                Go to the page and trigger the motion — hover, click, or scroll.
+                              </p>
+                            </motion.div>
+                          )}
+                        </>
                       )}
 
-                      {state.recording && (
-                        <motion.div
-                          initial={{ opacity: 0, y: 4 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className="mt-3 rounded-lg border border-accent-red-border bg-accent-red-muted p-3 text-center"
-                        >
-                          <div className="flex items-center justify-center gap-2">
-                            <span className="h-2 w-2 rounded-full bg-accent-red animate-pulse-record" />
-                            <span className="text-xs font-medium text-red-200">Recording in progress</span>
-                          </div>
-                          <p className="mt-1 text-xs text-red-200/70">
-                            Go to the page and trigger the motion — hover, click, or scroll.
-                          </p>
-                        </motion.div>
+                      {error && (
+                        <ErrorCard
+                          message={error}
+                          onRetry={() => setError(null)}
+                          onDismiss={() => setError(null)}
+                        />
+                      )}
+
+                      {capture && (
+                        <CaptureReport
+                          capture={capture}
+                          frameworks={frameworks}
+                          onSaveOriginal={handleSaveOriginal}
+                          onSaveToHistory={handleSaveToHistory}
+                        />
+                      )}
+
+                      {original && recreationGraph && recreationGraph.nodes.length > 0 && (
+                        <ValidationPanel
+                          original={original}
+                          recreation={recreationGraph}
+                          onClearOriginal={handleClearOriginal}
+                        />
                       )}
                     </>
-                  )}
-
-                  {error && (
-                    <ErrorCard
-                      message={error}
-                      onRetry={() => setError(null)}
-                      onDismiss={() => setError(null)}
+                  ) : (
+                    <WorkflowStepper
+                      currentStep={getWorkflowStep(state.active, selection.length > 0, capture !== null)}
                     />
                   )}
 
-                  {capture && (
-                    <CaptureReport
-                      capture={capture}
-                      frameworks={frameworks}
-                      onSaveOriginal={handleSaveOriginal}
-                      onSaveToHistory={handleSaveToHistory}
-                    />
-                  )}
-
-                  {original && recreationGraph && recreationGraph.nodes.length > 0 && (
-                    <ValidationPanel
-                      original={original}
-                      recreation={recreationGraph}
-                      onClearOriginal={handleClearOriginal}
+                  {/* Discovery — visible when active in precision mode */}
+                  {state.active && captureMode === "precision" && (
+                    <DiscoveryPanel
+                      discovered={discovered}
+                      scanning={scanning}
+                      onScan={() => void scanPage()}
+                      onSelect={(selector) => void selectDiscovered(selector)}
                     />
                   )}
                 </>
-              ) : (
-                <WorkflowStepper
-                  currentStep={getWorkflowStep(state.active, selection.length > 0, capture !== null)}
-                />
-              )}
-
-              {/* Discovery — visible when active */}
-              {!viewing && state.active && (
-                <DiscoveryPanel
-                  discovered={discovered}
-                  scanning={scanning}
-                  onScan={() => void scanPage()}
-                  onSelect={(selector) => void selectDiscovered(selector)}
-                />
               )}
             </motion.div>
           )}

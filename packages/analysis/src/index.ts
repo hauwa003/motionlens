@@ -12,6 +12,8 @@ export {
   type TrackedProperty,
 } from "./capture/types";
 export { CaptureRecorder, type RecorderOptions } from "./capture/recorder";
+export { AmbientObserver } from "./capture/ambient-observer";
+export type { AmbientBurst, AmbientObserverOptions } from "./capture/ambient-types";
 export {
   classifyTrigger,
   detectTrigger,
