@@ -80,7 +80,7 @@ function TagEditor({
               setAdding(false);
             }
           }}
-          className="h-6 w-20 rounded-md border border-accent-violet-border bg-surface-raised px-1.5 text-xs-meta text-text-primary outline-none"
+          className="h-6 w-32 rounded-lg border border-accent-violet-border bg-surface-raised px-1.5 text-xs-meta text-text-primary outline-none"
           placeholder="tag name"
         />
       ) : (
@@ -121,8 +121,8 @@ export function HistoryList({
     return (
       <EmptyState
         icon={BookOpen}
-        title="No saved analyses"
-        description="Capture and save an animation to see it here."
+        title="No saved captures yet"
+        description="Record a motion on any website, then save it to build your library."
       />
     );
   }

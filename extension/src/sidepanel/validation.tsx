@@ -270,7 +270,7 @@ export function ValidationPanel({
         <>
           <div className="mt-3 flex items-center gap-1.5 text-xs-meta font-medium uppercase tracking-wide text-text-tertiary">
             <AlertTriangle size={12} />
-            What's off
+            Differences
           </div>
           <div className="mt-2 flex flex-col gap-1.5">
             {score.differences.slice(0, 8).map((difference, index) => (
@@ -292,7 +292,7 @@ export function ValidationPanel({
         <>
           <div className="mt-3 flex items-center gap-1.5 text-xs-meta font-medium uppercase tracking-wide text-text-tertiary">
             <Lightbulb size={12} />
-            To get closer
+            Suggestions
           </div>
           <ul className="mt-2 flex flex-col gap-1.5">
             {score.suggestions.slice(0, 8).map((suggestion, index) => (

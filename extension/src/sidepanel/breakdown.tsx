@@ -29,25 +29,24 @@ function bezierFor(easing: string): [number, number, number, number] {
   return NAMED_BEZIERS.ease!;
 }
 
-/* ─── Easing Curve (48x48) ─── */
+/* ─── Easing Curve (32x32) ─── */
 
 export function EasingCurve({ easing }: { easing: string }) {
   const [x1, y1, x2, y2] = bezierFor(easing);
-  const s = 48;
+  const s = 32;
   const path = `M 0 ${s} C ${x1 * s} ${s - y1 * s}, ${x2 * s} ${s - y2 * s}, ${s} 0`;
 
   return (
     <svg
-      width="48"
-      height="48"
+      width="32"
+      height="32"
       viewBox={`0 0 ${s} ${s}`}
-      className="shrink-0 rounded-lg transition-shadow hover:shadow-glow-violet/20"
+      className="shrink-0 rounded transition-shadow hover:shadow-glow-violet/20"
     >
-      <rect width={s} height={s} rx="6" className="fill-surface-raised" />
-      {/* Grid lines */}
+      <rect width={s} height={s} rx="4" className="fill-surface-raised" />
       <line x1="0" y1={s / 2} x2={s} y2={s / 2} stroke="#27272a" strokeWidth="0.5" />
       <line x1={s / 2} y1="0" x2={s / 2} y2={s} stroke="#27272a" strokeWidth="0.5" />
-      <path d={path} fill="none" strokeWidth="2" className="stroke-accent-violet" strokeLinecap="round" />
+      <path d={path} fill="none" strokeWidth="1.5" className="stroke-accent-violet" strokeLinecap="round" />
     </svg>
   );
 }
@@ -105,7 +104,7 @@ function NodeCard({ node, depth }: { node: MotionGraphNode; depth: number }) {
 
         <ul className="mt-2 flex flex-col gap-2">
           {node.changes.map((change) => (
-            <li key={change.property} className="flex items-center gap-3">
+            <li key={change.property} className="flex items-center gap-2">
               <EasingCurve easing={change.easing} />
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline justify-between gap-2">
@@ -282,7 +281,7 @@ export function MotionBreakdown({
 
       <div className="mt-4 flex items-center gap-1.5 text-xs-meta font-medium uppercase tracking-wide text-text-tertiary">
         <Layers size={12} />
-        Layers
+        Elements
       </div>
       <ul className="mt-2 flex flex-col gap-2">
         {ordered.map((node) => (

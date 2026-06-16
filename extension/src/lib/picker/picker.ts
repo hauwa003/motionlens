@@ -118,6 +118,20 @@ export class ElementPicker {
     return true;
   }
 
+  /** Remove a single element from the selection by CSS selector. */
+  deselectBySelector(selector: string): boolean {
+    if (!this.enabled) return false;
+    for (const element of this.selected) {
+      if (buildSelector(element) === selector) {
+        this.selected.delete(element);
+        this.redraw();
+        this.callbacks.onSelectionChange(this.getSelection());
+        return true;
+      }
+    }
+    return false;
+  }
+
   private attachInteraction(): void {
     document.addEventListener("mousemove", this.handleMouseMove, true);
     document.addEventListener("click", this.handleClick, true);

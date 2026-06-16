@@ -108,6 +108,14 @@ chrome.runtime.onMessage.addListener(
         break;
       }
 
+      case MESSAGE_TYPES.REMOVE_ELEMENT: {
+        const removed = picker.deselectBySelector(message.selector);
+        sendResponse(
+          removed ? { ok: true } : { ok: false, error: "Element not in selection." },
+        );
+        break;
+      }
+
       case MESSAGE_TYPES.START_RECORDING:
         sendResponse(startRecording());
         break;

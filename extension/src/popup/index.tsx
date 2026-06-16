@@ -62,7 +62,12 @@ function IndexPopup() {
       setError(response.error ?? "Something went wrong.");
       return;
     }
-    setStatus(response.state?.active ? "active" : "idle");
+    const isActive = response.state?.active ?? false;
+    setStatus(isActive ? "active" : "idle");
+    // Auto-open the side panel when activating so users land right in the workflow
+    if (isActive && tabId !== null) {
+      void chrome.sidePanel.open({ tabId });
+    }
   };
 
   const openSidePanel = () => {
@@ -110,8 +115,8 @@ function IndexPopup() {
       {status === "unavailable" && (
         <EmptyState
           icon={AlertCircle}
-          title="Can't analyze this page"
-          description="Open a regular website and try again."
+          title="Can't access this page"
+          description="MotionLens works on standard web pages. Chrome internal pages and extensions are not supported."
         />
       )}
 

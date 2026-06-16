@@ -142,6 +142,7 @@ async function handleMessage(
 
     case MESSAGE_TYPES.SCAN_INTERACTIONS:
     case MESSAGE_TYPES.SELECT_ELEMENT:
+    case MESSAGE_TYPES.REMOVE_ELEMENT:
       // Pass-through commands handled by the content script in the tab.
       return chrome.tabs
         .sendMessage<ExtensionMessage, ExtensionResponse>(tabId, { ...message, tabId })

@@ -2,11 +2,12 @@ import { buildMotionGraph, type FrameworkScore, type RawCapture } from "@motionl
 import clsx from "clsx";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  ArrowLeft,
   BookOpen,
   Box,
+  Check,
   Cloud,
   Crosshair,
-  Keyboard,
   MousePointer,
   Plus,
   Radar,
@@ -178,13 +179,13 @@ function RecordingBanner({
       className="overflow-hidden border-b border-accent-red-border bg-accent-red-muted"
     >
       <div className="flex items-center gap-3 px-4 py-2">
-        <span className="h-2 w-2 rounded-full bg-accent-red animate-pulse-record" />
-        <span className="text-xs font-medium text-red-200">
-          Recording... {elapsed.toFixed(1)}s/10s
-        </span>
+        <span className="h-2 w-2 shrink-0 rounded-full bg-accent-red animate-pulse-record" />
         <div className="flex-1">
           <ProgressBar value={elapsed} max={10} color="red" />
         </div>
+        <span className="shrink-0 font-mono text-xs-meta text-red-200">
+          {elapsed.toFixed(1)}s
+        </span>
         <IconButton
           icon={Square}
           label="Stop recording"
@@ -279,64 +280,100 @@ function CaptureReport({
       ) : (
         <EmptyState
           icon={Crosshair}
-          title="No style changes captured"
-          description="Trigger the interaction while recording."
+          title="No motion detected"
+          description="Nothing changed on those elements during recording. Try triggering a hover, click, or scroll while recording."
         />
       )}
     </motion.section>
   );
 }
 
-/* ─── Guided Idle State ─── */
+/* ─── Workflow Stepper ─── */
 
-function GuidedIdle({ active }: { active: boolean }) {
-  if (active) {
-    return (
-      <EmptyState
-        icon={MousePointer}
-        title="Pick an element"
-        description="Hover the page to highlight elements, click to select them. Press Escape to clear."
-      />
-    );
-  }
+type WorkflowStep = 0 | 1 | 2 | 3;
 
+function getWorkflowStep(active: boolean, hasSelection: boolean, hasCapture: boolean): WorkflowStep {
+  if (!active) return 0;
+  if (!hasSelection) return 1;
+  if (!hasCapture) return 2;
+  return 3;
+}
+
+const STEPS = [
+  { label: "Activate MotionLens", description: "From the toolbar popup or", kbd: "Alt+Shift+M" },
+  { label: "Select elements", description: "Hover to highlight, click to pick" },
+  { label: "Record the motion", description: "Trigger the hover, click, or scroll" },
+  { label: "Copy the prompt", description: "Paste into your AI tool of choice" },
+];
+
+function WorkflowStepper({
+  currentStep,
+}: {
+  currentStep: WorkflowStep;
+}) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-4 py-8 animate-fade-in">
       <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-surface-raised">
-        <Zap size={24} className="text-accent-violet" />
+        {currentStep === 0 ? (
+          <Zap size={24} className="text-accent-violet" />
+        ) : (
+          <MousePointer size={24} className="text-accent-emerald" />
+        )}
       </div>
       <div className="text-center">
-        <p className="text-sm font-medium text-text-primary">No analysis yet</p>
+        <p className="text-sm font-medium text-text-primary">
+          {currentStep === 0 ? "Ready to capture" : STEPS[currentStep].label}
+        </p>
         <p className="mt-1 text-xs text-text-secondary">
-          Activate MotionLens to start capturing animations.
+          {STEPS[currentStep].description}
+          {STEPS[currentStep].kbd && (
+            <>
+              {" "}
+              <Kbd>{STEPS[currentStep].kbd!}</Kbd>
+            </>
+          )}
         </p>
       </div>
 
-      <div className="w-full max-w-xs space-y-2">
-        {[
-          { step: "1", text: "Activate from toolbar or", kbd: "Alt+Shift+M" },
-          { step: "2", text: "Hover + click to select elements" },
-          { step: "3", text: "Record the interaction" },
-          { step: "4", text: "Copy the AI-ready prompt" },
-        ].map((item) => (
-          <div
-            key={item.step}
-            className="flex items-center gap-3 rounded-lg border border-surface-border bg-surface-raised px-3 py-2"
-          >
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent-violet-muted text-xs-meta font-semibold text-accent-violet">
-              {item.step}
-            </span>
-            <span className="text-xs text-text-secondary">
-              {item.text}
-              {item.kbd && (
-                <>
-                  {" "}
-                  <Kbd>{item.kbd}</Kbd>
-                </>
+      <div className="w-full max-w-xs space-y-1.5">
+        {STEPS.map((step, i) => {
+          const done = i < currentStep;
+          const active = i === currentStep;
+          return (
+            <div
+              key={i}
+              className={clsx(
+                "flex items-center gap-3 rounded-lg border px-3 py-2 transition-colors",
+                done
+                  ? "border-accent-emerald-border bg-accent-emerald-muted"
+                  : active
+                    ? "border-accent-violet-border bg-accent-violet-muted"
+                    : "border-surface-border bg-surface-raised opacity-50",
               )}
-            </span>
-          </div>
-        ))}
+            >
+              <span
+                className={clsx(
+                  "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs-meta font-semibold",
+                  done
+                    ? "bg-accent-emerald text-surface"
+                    : active
+                      ? "bg-accent-violet text-white"
+                      : "bg-surface-border text-text-disabled",
+                )}
+              >
+                {done ? <Check size={12} /> : i + 1}
+              </span>
+              <span
+                className={clsx(
+                  "text-xs",
+                  done ? "text-emerald-300" : active ? "text-text-primary" : "text-text-disabled",
+                )}
+              >
+                {step.label}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -435,6 +472,8 @@ function IndexSidePanel() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("capture");
   const recordStartRef = useRef(Date.now());
+  const scrollPositions = useRef<Record<Tab, number>>({ capture: 0, library: 0, sync: 0 });
+  const mainRef = useRef<HTMLElement>(null);
 
   const recreationGraph = useMemo(() => (capture ? buildMotionGraph(capture) : null), [capture]);
 
@@ -536,35 +575,50 @@ function IndexSidePanel() {
   );
 
   const removeElement = useCallback(
-    (selector: string) => {
-      // Clear the full selection and re-select all except the removed one
-      // Since the picker only supports clearSelection + selectBySelector,
-      // we just send CLEAR_SELECTION — the UX handles showing updated state
-      void command(MESSAGE_TYPES.CLEAR_SELECTION);
+    async (selector: string) => {
+      if (tabId === null) return;
+      setError(null);
+      const response = await sendToBackground({
+        type: MESSAGE_TYPES.REMOVE_ELEMENT,
+        tabId,
+        selector,
+      });
+      if (!response.ok) setError(response.error ?? "Couldn't remove that element.");
     },
-    [command],
+    [tabId],
+  );
+
+  // Save scroll position when switching tabs, restore on return
+  const switchTab = useCallback(
+    (next: Tab) => {
+      if (next === activeTab) return;
+      if (mainRef.current) {
+        scrollPositions.current[activeTab] = mainRef.current.scrollTop;
+      }
+      setActiveTab(next);
+      requestAnimationFrame(() => {
+        if (mainRef.current) {
+          mainRef.current.scrollTop = scrollPositions.current[next];
+        }
+      });
+    },
+    [activeTab],
   );
 
   // Keyboard shortcut for tab switching
   useEffect(() => {
+    const tabs: Tab[] = ["capture", "library", "sync"];
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "1" && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        const target = e.target as HTMLElement;
-        if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
-        setActiveTab("capture");
-      } else if (e.key === "2" && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        const target = e.target as HTMLElement;
-        if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
-        setActiveTab("library");
-      } else if (e.key === "3" && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        const target = e.target as HTMLElement;
-        if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
-        setActiveTab("sync");
+      const target = e.target as HTMLElement;
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
+      if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+        const idx = parseInt(e.key) - 1;
+        if (idx >= 0 && idx < tabs.length) switchTab(tabs[idx]);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [switchTab]);
 
   return (
     <div className="flex min-h-screen flex-col bg-surface text-text-primary font-sans">
@@ -600,7 +654,7 @@ function IndexSidePanel() {
               role="tab"
               aria-selected={active}
               tabIndex={active ? 0 : -1}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => switchTab(tab.id)}
               className={clsx(
                 "relative flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium transition-colors",
                 active ? "text-text-primary" : "text-text-tertiary hover:text-text-secondary",
@@ -620,7 +674,7 @@ function IndexSidePanel() {
       </nav>
 
       {/* Tab content */}
-      <main className="flex flex-1 flex-col overflow-y-auto">
+      <main ref={mainRef} className="flex flex-1 flex-col overflow-y-auto">
         <AnimatePresence mode="wait">
           {activeTab === "capture" && (
             <motion.div
@@ -637,10 +691,11 @@ function IndexSidePanel() {
                 <div className="animate-fade-in">
                   <Button
                     variant="ghost"
+                    icon={ArrowLeft}
                     onClick={() => setViewing(null)}
                     className="mb-3 h-7 px-2 text-xs-meta"
                   >
-                    ← Back
+                    Back
                   </Button>
                   <p className="mb-2 truncate text-xs text-text-secondary" title={viewing.sourceUrl}>
                     {viewing.sourceUrl}
@@ -687,19 +742,25 @@ function IndexSidePanel() {
                           onClick={() => void command(MESSAGE_TYPES.START_RECORDING)}
                           className="mt-4 h-11 w-full"
                         >
-                          <span className="flex-1 text-left">Record interaction</span>
+                          <span className="flex-1 text-left">Record</span>
                           <span className="text-xs-meta opacity-60">10s max</span>
                         </Button>
                       )}
 
                       {state.recording && (
-                        <motion.p
+                        <motion.div
                           initial={{ opacity: 0, y: 4 }}
                           animate={{ opacity: 1, y: 0 }}
-                          className="mt-2 text-center text-xs text-text-secondary"
+                          className="mt-3 rounded-lg border border-accent-red-border bg-accent-red-muted p-3 text-center"
                         >
-                          Trigger the interaction — hover, click, or scroll.
-                        </motion.p>
+                          <div className="flex items-center justify-center gap-2">
+                            <span className="h-2 w-2 rounded-full bg-accent-red animate-pulse-record" />
+                            <span className="text-xs font-medium text-red-200">Recording in progress</span>
+                          </div>
+                          <p className="mt-1 text-xs text-red-200/70">
+                            Go to the page and trigger the motion — hover, click, or scroll.
+                          </p>
+                        </motion.div>
                       )}
                     </>
                   )}
@@ -730,7 +791,9 @@ function IndexSidePanel() {
                   )}
                 </>
               ) : (
-                <GuidedIdle active={state.active} />
+                <WorkflowStepper
+                  currentStep={getWorkflowStep(state.active, selection.length > 0, capture !== null)}
+                />
               )}
 
               {/* Discovery — visible when active */}
@@ -760,7 +823,7 @@ function IndexSidePanel() {
                 entries={history}
                 onOpen={(entry) => {
                   setViewing(entry);
-                  setActiveTab("capture");
+                  switchTab("capture");
                 }}
                 onDelete={(entry) => void deleteAnalysis(entry.id).then(setHistory)}
                 onUpdateTags={(entry, tags) =>
