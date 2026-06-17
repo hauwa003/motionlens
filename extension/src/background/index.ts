@@ -230,19 +230,27 @@ async function handleMessage(
       return { ok: true };
 
     case MESSAGE_TYPES.AMBIENT_BURST: {
-      // Capture screenshot of the visible tab at burst settle time
-      let screenshot: string | undefined;
-      try {
-        screenshot = await chrome.tabs.captureVisibleTab({ format: "jpeg", quality: 60 });
-      } catch {
-        // Tab may not be focused or capturable — skip screenshot
-      }
-      const burstWithScreenshot = { ...message.burst, screenshot };
-      await addTabBurst(tabId, burstWithScreenshot);
-      // Notify UI surfaces about the new burst
+      // Store the burst first — never let screenshot capture block this
+      await addTabBurst(tabId, message.burst);
       chrome.runtime
-        .sendMessage({ type: MESSAGE_TYPES.AMBIENT_BURST_CHANGED, tabId, burst: burstWithScreenshot })
+        .sendMessage({ type: MESSAGE_TYPES.AMBIENT_BURST_CHANGED, tabId, burst: message.burst })
         .catch(() => undefined);
+
+      // Capture screenshot async — update the burst in storage if it succeeds
+      try {
+        const screenshot = await chrome.tabs.captureVisibleTab({ format: "jpeg", quality: 60 });
+        if (screenshot) {
+          const burstWithScreenshot = { ...message.burst, screenshot };
+          const existing = await getTabBursts(tabId);
+          const updated = existing.map((b) => (b.id === message.burst.id ? burstWithScreenshot : b));
+          await chrome.storage.session.set({ [burstsKey(tabId)]: updated });
+          chrome.runtime
+            .sendMessage({ type: MESSAGE_TYPES.AMBIENT_BURST_CHANGED, tabId, burst: burstWithScreenshot })
+            .catch(() => undefined);
+        }
+      } catch {
+        // Tab may not be focused or capturable — burst already stored without screenshot
+      }
       return { ok: true };
     }
 
