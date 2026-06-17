@@ -2,15 +2,15 @@ import { buildMotionGraph, type AmbientBurst, type FrameworkScore } from "@motio
 import type { MotionGraph } from "@motionlens/motion-graph";
 import clsx from "clsx";
 import { AnimatePresence, motion } from "framer-motion";
-import { ChevronDown, Radar, Save, Trash2 } from "lucide-react";
+import { ChevronDown, Eye, Mouse, Navigation, Pointer, Save, Trash2 } from "lucide-react";
 import { useMemo } from "react";
 
-import { Button, Card, EmptyState, Pill, SectionHeader } from "~components/ui";
+import { Button, Card, EmptyState, Pill } from "~components/ui";
 
 import { MotionBreakdown } from "./breakdown";
 import { PromptPanel } from "./prompts";
 
-/* ─── Time helpers ─── */
+/* ─── Helpers ─── */
 
 function relativeTime(iso: string): string {
   const seconds = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
@@ -21,33 +21,26 @@ function relativeTime(iso: string): string {
   return `${Math.floor(minutes / 60)}h ago`;
 }
 
-function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
-  return `${(ms / 1000).toFixed(1)}s`;
-}
-
-/* ─── Motion type detection from capture ─── */
-
 function detectMotionTypes(graph: MotionGraph): string[] {
   const types = new Set<string>();
   for (const node of graph.nodes) {
-    for (const mt of node.motionTypes) {
-      types.add(mt);
-    }
+    for (const mt of node.motionTypes) types.add(mt);
   }
   return Array.from(types);
 }
 
-function detectTriggerLabel(burst: AmbientBurst): string {
+type TriggerInfo = { label: string; icon: typeof Mouse };
+
+function detectTrigger(burst: AmbientBurst): TriggerInfo {
   const events = burst.capture.events;
-  if (events.length === 0) return "auto";
+  if (events.length === 0) return { label: "Auto animation", icon: Eye };
 
   const types = new Set(events.map((e) => e.type));
-  if (types.has("scroll")) return "scroll";
-  if (types.has("click") || types.has("pointerdown")) return "click";
-  if (types.has("pointerover")) return "hover";
-  if (types.has("focusin")) return "focus";
-  return "interaction";
+  if (types.has("scroll")) return { label: "Scroll animation", icon: Navigation };
+  if (types.has("click") || types.has("pointerdown")) return { label: "Click animation", icon: Pointer };
+  if (types.has("pointerover")) return { label: "Hover animation", icon: Mouse };
+  if (types.has("focusin")) return { label: "Focus animation", icon: Pointer };
+  return { label: "Animation detected", icon: Eye };
 }
 
 /* ─── Burst Card ─── */
@@ -67,9 +60,14 @@ function AmbientBurstCard({
 }) {
   const graph = useMemo(() => buildMotionGraph(burst.capture), [burst.capture]);
   const motionTypes = useMemo(() => detectMotionTypes(graph), [graph]);
-  const trigger = useMemo(() => detectTriggerLabel(burst), [burst]);
+  const trigger = useMemo(() => detectTrigger(burst), [burst]);
 
   if (graph.nodes.length === 0) return null;
+
+  const TriggerIcon = trigger.icon;
+  const summary = motionTypes.length > 0
+    ? `${burst.elementCount} element${burst.elementCount !== 1 ? "s" : ""} \u00b7 ${motionTypes.join(", ")}`
+    : `${burst.elementCount} element${burst.elementCount !== 1 ? "s" : ""}`;
 
   return (
     <motion.div
@@ -80,53 +78,44 @@ function AmbientBurstCard({
       transition={{ duration: 0.2 }}
     >
       <Card interactive className="overflow-hidden">
-        {/* Screenshot preview */}
-        {burst.screenshot && (
-          <div className="mb-2 overflow-hidden rounded-md">
-            <img
-              src={burst.screenshot}
-              alt="Page screenshot when animation was detected"
-              className="w-full h-auto"
-              loading="lazy"
-            />
-          </div>
-        )}
-
-        {/* Header — always visible */}
         <button
           type="button"
           onClick={onToggle}
-          className="flex w-full items-center gap-2 text-left"
+          className="flex w-full flex-col gap-2 text-left"
         >
-          <Pill variant="emerald">{trigger}</Pill>
-          <span className="text-xs text-text-secondary">
-            {burst.elementCount} element{burst.elementCount !== 1 ? "s" : ""}
-          </span>
-          <span className="text-xs-meta text-text-disabled">
-            {formatDuration(burst.capture.durationMs)}
-          </span>
-          <span className="ml-auto text-xs-meta text-text-disabled">
-            {relativeTime(burst.detectedAt)}
-          </span>
-          <ChevronDown
-            size={14}
-            className={clsx(
-              "shrink-0 text-text-disabled transition-transform",
-              expanded && "rotate-180",
-            )}
-          />
-        </button>
+          {/* Screenshot */}
+          {burst.screenshot && (
+            <div className="-mx-3 -mt-3 mb-1 overflow-hidden">
+              <img
+                src={burst.screenshot}
+                alt="Page at time of animation"
+                className="w-full h-auto"
+                loading="lazy"
+              />
+            </div>
+          )}
 
-        {/* Motion type pills */}
-        {motionTypes.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1">
-            {motionTypes.map((mt) => (
-              <Pill key={mt} variant="violet">
-                {mt}
-              </Pill>
-            ))}
+          {/* Title row */}
+          <div className="flex w-full items-center gap-2">
+            <TriggerIcon size={14} className="shrink-0 text-accent-violet" />
+            <span className="text-sm font-medium text-text-primary">
+              {trigger.label}
+            </span>
+            <span className="ml-auto text-xs text-text-disabled">
+              {relativeTime(burst.detectedAt)}
+            </span>
+            <ChevronDown
+              size={14}
+              className={clsx(
+                "shrink-0 text-text-disabled transition-transform",
+                expanded && "rotate-180",
+              )}
+            />
           </div>
-        )}
+
+          {/* Subtitle */}
+          <span className="text-xs text-text-tertiary">{summary}</span>
+        </button>
 
         {/* Expanded detail */}
         <AnimatePresence>
@@ -152,7 +141,7 @@ function AmbientBurstCard({
                     }}
                     className="h-7 px-2 text-xs-meta"
                   >
-                    Save to library
+                    Save
                   </Button>
                 </div>
               </div>
@@ -184,29 +173,28 @@ export function AmbientFeed({
   if (bursts.length === 0) {
     return (
       <EmptyState
-        icon={Radar}
+        icon={Eye}
         title="Watching for animations"
-        description="Scroll, hover, or click on the page. Detected animations will appear here."
+        description="Interact with the page normally — scroll, hover, click. Animations will appear here automatically."
       />
     );
   }
 
   return (
     <div className="flex flex-col gap-3">
-      <SectionHeader
-        title={`${bursts.length} animation${bursts.length !== 1 ? "s" : ""} captured`}
-        icon={Radar}
-        action={
-          <Button
-            variant="ghost"
-            icon={Trash2}
-            onClick={onClear}
-            className="h-7 px-2 text-xs-meta"
-          >
-            Clear
-          </Button>
-        }
-      />
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-text-secondary">
+          {bursts.length} animation{bursts.length !== 1 ? "s" : ""} found
+        </p>
+        <Button
+          variant="ghost"
+          icon={Trash2}
+          onClick={onClear}
+          className="h-7 px-2 text-xs-meta"
+        >
+          Clear
+        </Button>
+      </div>
 
       <div className="flex flex-col gap-2 overflow-y-auto">
         <AnimatePresence>
