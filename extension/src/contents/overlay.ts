@@ -110,13 +110,11 @@ chrome.runtime.onMessage.addListener(
 
       case MESSAGE_TYPES.STATE_CHANGED:
         if (message.state.active) {
-          picker.enable();
-          // Start or stop ambient based on the ambient flag in state
           if (message.state.ambient) {
-            // Pause picker in ambient mode so the user can scroll/click normally
-            picker.pause();
+            picker.disable();
             startAmbient();
           } else {
+            picker.enable();
             stopAmbient();
           }
         } else {
@@ -164,14 +162,13 @@ chrome.runtime.onMessage.addListener(
         break;
 
       case MESSAGE_TYPES.START_AMBIENT:
-        picker.pause();
+        picker.disable();
         startAmbient();
         sendResponse({ ok: true });
         break;
 
       case MESSAGE_TYPES.STOP_AMBIENT:
         stopAmbient();
-        picker.resume();
         sendResponse({ ok: true });
         break;
 
@@ -197,10 +194,10 @@ window.addEventListener("message", (event: MessageEvent) => {
 // re-enable the picker and restart ambient observation.
 void sendToBackground({ type: MESSAGE_TYPES.GET_STATE }).then((response) => {
   if (response.state?.active) {
-    picker.enable();
     if (response.state.ambient) {
-      picker.pause();
       startAmbient();
+    } else {
+      picker.enable();
     }
   }
 });
